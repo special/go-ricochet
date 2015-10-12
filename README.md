@@ -12,6 +12,8 @@ the purpose of writing testing tools for Ricochet in Go.
 * Connect to a Local Ricochet Client
 * Issue an Authentication Request
 * Issue a Contact Request
+* Open a new Channel
+* Send a Chat Message
 
 If you have questions or want to contribute please contact Sarah @ 
 `ricochet:qn6uo4cmsrfv4kzq`
