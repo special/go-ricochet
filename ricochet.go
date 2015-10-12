@@ -8,9 +8,11 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/s-rah/go-ricochet/auth"
+	"github.com/s-rah/go-ricochet/chat"
 	"github.com/s-rah/go-ricochet/contact"
 	"github.com/s-rah/go-ricochet/control"
 	"io/ioutil"
@@ -98,13 +100,13 @@ func (r *Ricochet) decodeResult(response []byte) *Protocol_Data_AuthHiddenServic
 	return res
 }
 
-func (r *Ricochet) constructProtocol(data []byte, channel byte) []byte {
+func (r *Ricochet) constructProtocol(data []byte, channel int) []byte {
 	header := make([]byte, 4+len(data))
 	r.logger.Print("Wrting Packet of Size: ", len(header))
 	header[0] = byte(len(header) >> 8)
 	header[1] = byte(len(header) & 0x00FF)
 	header[2] = 0x00
-	header[3] = channel
+	header[3] = byte(channel)
 	copy(header[4:], data[:])
 	return header
 }
@@ -123,7 +125,7 @@ func (r *Ricochet) Connect(from string, to string) error {
 
 	// TODO: For now hardcoding port numbers, these change
 	// on startup so need to be reset every time.
-	tcpAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:49952")
+	tcpAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:43978")
 	if err != nil {
 		r.logger.Fatal("Cannot Resolve TCP Address ", err)
 		return err
@@ -222,6 +224,38 @@ func (r *Ricochet) Connect(from string, to string) error {
 	return nil
 }
 
+// OpenChannel opens a new channel with the given type and id
+// Prerequisites:
+//              * Must have Previously issued a successful Connect()
+//              * If acting as the client, id must be odd (currently this is the
+//                only supported option.
+func (r *Ricochet) OpenChannel(channelType string, id int) error {
+	oc := &Protocol_Data_Control.OpenChannel{
+		ChannelIdentifier: proto.Int32(int32(id)),
+		ChannelType:       proto.String(channelType),
+	}
+
+	pc := &Protocol_Data_Control.Packet{
+		OpenChannel: oc,
+	}
+
+	data, _ := proto.Marshal(pc)
+	openChannel := r.constructProtocol(data, 0)
+	r.logger.Print("Opening Channel: ", pc)
+	r.send(openChannel)
+	response, _ := r.recv()
+	openChannelResponse := r.decodePacket(response)
+	r.logger.Print("Received Response: ", openChannelResponse)
+
+	channelResult := openChannelResponse.GetChannelResult()
+
+	if channelResult.GetOpened() == true {
+		r.logger.Print("Channel Opened Successfully: ", channelResult.GetChannelIdentifier())
+		return nil
+	}
+	return errors.New("failed to open channel")
+}
+
 // SendContactRequest initiates a contact request to the server.
 // Prerequisites:
 //              * Must have Previously issued a successful Connect()
@@ -254,6 +288,25 @@ func (r *Ricochet) SendContactRequest(nick string, message string) {
 	response, _ := r.recv()
 	openChannelResponse := r.decodePacket(response)
 	r.logger.Print("Received Response: ", openChannelResponse)
+}
+
+// SendMessage sends a Chat Message (message) to a give Channel (channel).
+// Prerequisites:
+//             * Must have previously issued a successful Connect()
+//             * Must have previously opened channel with OpenChanel
+func (r *Ricochet) SendMessage(message string, channel int) {
+	// Construct a Contact Request Channel
+	cm := &Protocol_Data_Chat.ChatMessage{
+		MessageText: proto.String(message),
+	}
+	chatPacket := &Protocol_Data_Chat.Packet{
+		ChatMessage: cm,
+	}
+
+	data, _ := proto.Marshal(chatPacket)
+	chatMessageBytes := r.constructProtocol(data, channel)
+	r.logger.Print("Sending Message: ", chatPacket)
+	r.send(chatMessageBytes)
 }
 
 // negotiateVersion Perform version negotiation with the connected host.
