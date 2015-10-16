@@ -33,8 +33,14 @@ type Ricochet struct {
 // Init sets up the Ricochet object. It takes in a filename of a hidden service
 // private_key file so it can successfully authenticate itself with other
 // clients.
-func (r *Ricochet) Init(filename string) {
-	r.logger = log.New(os.Stdout, "[Ricochet]: ", log.Ltime|log.Lmicroseconds)
+func (r *Ricochet) Init(filename string, debugLog bool) {
+
+	if debugLog {
+		r.logger = log.New(os.Stdout, "[Ricochet]: ", log.Ltime|log.Lmicroseconds)
+	} else {
+		r.logger = log.New(ioutil.Discard, "[Ricochet]: ", log.Ltime|log.Lmicroseconds)
+	}
+
 	pemData, err := ioutil.ReadFile(filename)
 
 	if err != nil {
