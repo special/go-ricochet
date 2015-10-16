@@ -15,10 +15,12 @@ import (
 	"github.com/s-rah/go-ricochet/chat"
 	"github.com/s-rah/go-ricochet/contact"
 	"github.com/s-rah/go-ricochet/control"
+	"h12.me/socks"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
+	"strings"
 )
 
 // Ricochet is a protocol to conducting anonymous IM.
@@ -115,25 +117,34 @@ func (r *Ricochet) constructProtocol(data []byte, channel int) []byte {
 // both ricochet formated hostnames e.g. qn6uo4cmsrfv4kzq.onion. If this
 // function finished successfully then the connection can be assumed to
 // be open and authenticated.
+// To specify a local port using the format "127.0.0.1:[port]|ricochet-id" for
+// to
 func (r *Ricochet) Connect(from string, to string) error {
 
-	// TODO: In the future we will want the ability to connect
-	// through Tor to a hidden service address. This works if
-	// you uncomment this, but is slower for testing purposes
-	// dialSocksProxy := socks.DialSocksProxy(socks.SOCKS5, "127.0.0.1:9050")
-	//return dialSocksProxy("", "qn6uo4cmsrfv4kzq.onion:9878")
-
-	// TODO: For now hardcoding port numbers, these change
-	// on startup so need to be reset every time.
-	tcpAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:43978")
-	if err != nil {
-		r.logger.Fatal("Cannot Resolve TCP Address ", err)
-		return err
-	}
-	r.conn, err = net.DialTCP("tcp", nil, tcpAddr)
-	if err != nil {
-		r.logger.Fatal("Cannot Dial TCP Address ", err)
-		return err
+	if strings.HasPrefix(to, "127.0.0.1") {
+		toAddr := strings.Split(to, "|")
+		tcpAddr, err := net.ResolveTCPAddr("tcp", toAddr[0])
+		if err != nil {
+			r.logger.Fatal("Cannot Resolve TCP Address ", err)
+			return errors.New("Cannot Resolve Local TCP Address")
+		}
+		r.conn, err = net.DialTCP("tcp", nil, tcpAddr)
+		if err != nil {
+			r.logger.Fatal("Cannot Dial TCP Address ", err)
+			return errors.New("Cannot Dial Local TCP Address")
+		}
+		r.logger.Print("Connected to " + to + " as " + toAddr[1])
+		to = toAddr[1]
+	} else {
+		dialSocksProxy := socks.DialSocksProxy(socks.SOCKS5, "127.0.0.1:9050")
+		r.logger.Print("Connecting to ", to+".onion:9878")
+		conn, err := dialSocksProxy("", to+".onion:9878")
+		if err != nil {
+			r.logger.Fatal("Cannot Dial Remove Address ", err)
+			return errors.New("Cannot Dial Remote Ricochet Address")
+		}
+		r.conn = conn
+		r.logger.Print("Connected to ", to+".onion:9878")
 	}
 
 	r.negotiateVersion()
@@ -143,7 +154,7 @@ func (r *Ricochet) Connect(from string, to string) error {
 		ChannelIdentifier: proto.Int32(1),
 		ChannelType:       proto.String("im.ricochet.auth.hidden-service"),
 	}
-	err = proto.SetExtension(oc, Protocol_Data_AuthHiddenService.E_ClientCookie, []byte("0000000000000000"))
+	err := proto.SetExtension(oc, Protocol_Data_AuthHiddenService.E_ClientCookie, []byte("0000000000000000"))
 	pc := &Protocol_Data_Control.Packet{
 		OpenChannel: oc,
 	}
