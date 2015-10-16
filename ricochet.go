@@ -76,7 +76,6 @@ func (r *Ricochet) decodePacket(response []byte) *Protocol_Data_Control.Packet {
 
 	if err != nil {
 		r.logger.Fatal("Error Unmarshalling Response", err)
-		panic(err)
 	}
 
 	return res
@@ -96,7 +95,6 @@ func (r *Ricochet) decodeResult(response []byte) *Protocol_Data_AuthHiddenServic
 
 	if err != nil {
 		r.logger.Fatal("Error Unmarshalling Response: ", err)
-		panic(err)
 	}
 
 	return res
@@ -162,7 +160,6 @@ func (r *Ricochet) Connect(from string, to string) error {
 
 	if err != nil {
 		r.logger.Fatal("Cannot Marshal Open Channel Message: ", err)
-		panic("Cannot Marshal Open Channel Message")
 	}
 
 	openChannel := r.constructProtocol(data, 0)
@@ -290,7 +287,6 @@ func (r *Ricochet) SendContactRequest(nick string, message string) {
 
 	if err != nil {
 		r.logger.Fatal("Cannot Marshal Open Channel Message: ", err)
-		panic("Cannot Marshal Open Channel Message")
 	}
 
 	openChannel := r.constructProtocol(data, 0)
@@ -333,12 +329,10 @@ func (r *Ricochet) negotiateVersion() {
 
 	if len(res) != 1 || err != nil {
 		r.logger.Fatal("Failed Version Negotiating: ", res, err)
-		panic("Failed Version Negotiating")
 	}
 
 	if res[0] != 1 {
 		r.logger.Fatal("Failed Version Negotiating - Invalid Version ", res)
-		panic("Failed Version Negotiating")
 	}
 
 	r.logger.Print("Successfully Negotiated Version ", res[0])
