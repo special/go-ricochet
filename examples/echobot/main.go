@@ -12,7 +12,7 @@ func main() {
 	ricochet.Init("./private_key", true)
 	ricochet.Connect("kwke2hntvyfqm7dr", "127.0.0.1:55555|jlq67qzo6s4yp3sp")
 	
-	// Not needed passed the initial run
+	// Not needed past the initial run
 	// TODO need to wait for contact response before sending OpenChannel
 	// ricochet.SendContactRequest("EchoBot", "I'm an EchoBot")
 
