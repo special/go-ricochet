@@ -3,6 +3,7 @@ package goricochet
 import (
 	"crypto"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -17,6 +18,7 @@ import (
 	"github.com/s-rah/go-ricochet/contact"
 	"github.com/s-rah/go-ricochet/control"
 	"h12.me/socks"
+	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -128,7 +130,11 @@ func (r *Ricochet) Connect(from string, to string) error {
 		ChannelIdentifier: proto.Int32(1),
 		ChannelType:       proto.String("im.ricochet.auth.hidden-service"),
 	}
-	err := proto.SetExtension(oc, Protocol_Data_AuthHiddenService.E_ClientCookie, []byte("0000000000000000"))
+
+	var cookie [16]byte
+	io.ReadFull(rand.Reader, cookie[:])
+
+	err := proto.SetExtension(oc, Protocol_Data_AuthHiddenService.E_ClientCookie, cookie[:])
 	pc := &Protocol_Data_Control.Packet{
 		OpenChannel: oc,
 	}
@@ -157,7 +163,7 @@ func (r *Ricochet) Connect(from string, to string) error {
 	r.logger.Print("Starting Authentication with Server Cookie: ", serverCookie)
 
 	key := make([]byte, 32)
-	copy(key[0:16], []byte("0000000000000000"))
+	copy(key[0:16], cookie[:])
 	copy(key[16:], serverCookie)
 	value := []byte(from + to)
 	r.logger.Print("Got Hmac Key: ", key)
@@ -392,8 +398,11 @@ func (r *Ricochet) ListenAndWait() error {
 						r.logger.Print("Channel Opened Successfully: ", channelResult.GetChannelIdentifier())
 						r.channelState[int(message.ControlPacket.GetChannelResult().GetChannelIdentifier())] = 1
 					}
+					break
 				}
 
+			} else if packet.Channel == 3 {
+				// Contact Request
 			} else {
 				// At this point the only other expected type of message
 				// is a Chat Message
