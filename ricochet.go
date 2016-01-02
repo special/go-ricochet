@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
+	"encoding/binary"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -23,11 +24,40 @@ import (
 	"strings"
 )
 
+// MessageType details the different kinds of messages used by Ricochet
+type MessageType int
+
+const (
+	// CONTROL messages are those sent on channel 0
+	CONTROL MessageType = iota
+	// AUTH messages are those that deal with authentication
+	AUTH = iota
+	// DATA covers both chat and (later) file handling and other non-control messages.
+	DATA = iota
+)
+
 // Ricochet is a protocol to conducting anonymous IM.
 type Ricochet struct {
-	conn       net.Conn
-	privateKey *pem.Block
-	logger     *log.Logger
+	conn         net.Conn
+	privateKey   *pem.Block
+	logger       *log.Logger
+	channelState map[int]int
+	channel      chan RicochetMessage
+}
+
+// RicochetData is a structure containing the raw data and the channel it the
+// message originated on.
+type RicochetData struct {
+	Channel int
+	Data    []byte
+}
+
+// RicochetMessage is a Wrapper Around Common Ricochet Protocol Strucutres
+type RicochetMessage struct {
+	Channel       int
+	ControlPacket *Protocol_Data_Control.Packet
+	DataPacket    *Protocol_Data_Chat.Packet
+	AuthPacket    *Protocol_Data_AuthHiddenService.Packet
 }
 
 // Init sets up the Ricochet object. It takes in a filename of a hidden service
@@ -53,68 +83,8 @@ func (r *Ricochet) Init(filename string, debugLog bool) {
 	}
 
 	r.privateKey = block
-}
-
-func (r *Ricochet) send(data []byte) {
-	fmt.Fprintf(r.conn, "%s", data)
-}
-
-func (r *Ricochet) recv() ([]byte, error) {
-	buf := make([]byte, 4096)
-	n, err := r.conn.Read(buf)
-	r.logger.Print("Received Response From Service: ", n, err)
-	if err != nil {
-		return nil, err
-	}
-	ret := make([]byte, n)
-	copy(ret[:], buf[:])
-	return ret, nil
-}
-
-func (r *Ricochet) decodePacket(response []byte) *Protocol_Data_Control.Packet {
-	// TODO: Check Length and Channel are Sane
-	if len(response) < 4 {
-		r.logger.Fatal("Response is too short ", response)
-		return nil
-	}
-	res := new(Protocol_Data_Control.Packet)
-	err := proto.Unmarshal(response[4:], res)
-
-	if err != nil {
-		r.logger.Fatal("Error Unmarshalling Response", err)
-	}
-
-	return res
-}
-
-func (r *Ricochet) decodeResult(response []byte) *Protocol_Data_AuthHiddenService.Packet {
-	// TODO: Check Length and Channel are Sane
-	if len(response) < 4 {
-		r.logger.Fatal("Response is too short ", response)
-		return nil
-	}
-	length := response[1]
-
-	r.logger.Print(response)
-	res := new(Protocol_Data_AuthHiddenService.Packet)
-	err := proto.Unmarshal(response[4:length], res)
-
-	if err != nil {
-		r.logger.Fatal("Error Unmarshalling Response: ", err)
-	}
-
-	return res
-}
-
-func (r *Ricochet) constructProtocol(data []byte, channel int) []byte {
-	header := make([]byte, 4+len(data))
-	r.logger.Print("Wrting Packet of Size: ", len(header))
-	header[0] = byte(len(header) >> 8)
-	header[1] = byte(len(header) & 0x00FF)
-	header[2] = 0x00
-	header[3] = byte(channel)
-	copy(header[4:], data[:])
-	return header
+	r.channelState = make(map[int]int)
+	r.channel = make(chan RicochetMessage)
 }
 
 // Connect sets up a ricochet connection between from and to which are
@@ -172,10 +142,10 @@ func (r *Ricochet) Connect(from string, to string) error {
 	r.logger.Print("Opening Channel: ", pc)
 	r.send(openChannel)
 
-	response, _ := r.recv()
-	openChannelResponse := r.decodePacket(response)
+	response, _ := r.getMessages()
+	openChannelResponse, _ := r.decodePacket(response[0], CONTROL)
 	r.logger.Print("Received Response: ", openChannelResponse)
-	channelResult := openChannelResponse.GetChannelResult()
+	channelResult := openChannelResponse.ControlPacket.GetChannelResult()
 
 	if channelResult.GetOpened() == true {
 		r.logger.Print("Channel Opened Successfully: ", channelResult.GetChannelIdentifier())
@@ -232,8 +202,8 @@ func (r *Ricochet) Connect(from string, to string) error {
 	r.logger.Print("Constructed Proof: ", ahsPacket)
 	r.send(sendProof)
 
-	response, _ = r.recv()
-	resultResponse := r.decodeResult(response)
+	response, _ = r.getMessages()
+	resultResponse, _ := r.decodePacket(response[0], AUTH)
 	r.logger.Print("Received Result: ", resultResponse)
 	return nil
 }
@@ -257,17 +227,7 @@ func (r *Ricochet) OpenChannel(channelType string, id int) error {
 	openChannel := r.constructProtocol(data, 0)
 	r.logger.Print("Opening Channel: ", pc)
 	r.send(openChannel)
-	response, _ := r.recv()
-	openChannelResponse := r.decodePacket(response)
-	r.logger.Print("Received Response: ", openChannelResponse)
-
-	channelResult := openChannelResponse.GetChannelResult()
-
-	if channelResult.GetOpened() == true {
-		r.logger.Print("Channel Opened Successfully: ", channelResult.GetChannelIdentifier())
-		return nil
-	}
-	return errors.New("failed to open channel")
+	return nil
 }
 
 // SendContactRequest initiates a contact request to the server.
@@ -298,9 +258,6 @@ func (r *Ricochet) SendContactRequest(nick string, message string) {
 	openChannel := r.constructProtocol(data, 0)
 	r.logger.Print("Opening Channel: ", pc)
 	r.send(openChannel)
-	response, _ := r.recv()
-	openChannelResponse := r.decodePacket(response)
-	r.logger.Print("Received Response: ", openChannelResponse)
 }
 
 // SendMessage sends a Chat Message (message) to a give Channel (channel).
@@ -342,4 +299,181 @@ func (r *Ricochet) negotiateVersion() {
 	}
 
 	r.logger.Print("Successfully Negotiated Version ", res[0])
+}
+
+// constructProtocol places the data into a structure needed for the client to
+// decode the packet.
+func (r *Ricochet) constructProtocol(data []byte, channel int) []byte {
+	header := make([]byte, 4+len(data))
+	r.logger.Print("Wrting Packet of Size: ", len(header))
+	header[0] = byte(len(header) >> 8)
+	header[1] = byte(len(header) & 0x00FF)
+	header[2] = 0x00
+	header[3] = byte(channel)
+	copy(header[4:], data[:])
+	return header
+}
+
+// send is a utility funtion to send data to the connected client.
+func (r *Ricochet) send(data []byte) {
+	fmt.Fprintf(r.conn, "%s", data)
+}
+
+// Listen blocks and waits for a new message to arrive from the connected user
+// once a message has arrived, it returns the message and the channel it occured
+// on, else it returns an error.
+// Prerequisites:
+//             * Must have previously issued a successful Connect()
+//             * Must have previously ran "go ricochet.ListenAndWait()"
+func (r *Ricochet) Listen() (string, int, error) {
+	var message RicochetMessage
+	message = <-r.channel
+	r.logger.Print("Received Result: ", message)
+	if message.DataPacket.GetChatMessage() == nil {
+		return "", 0, errors.New("Did not receive a chat message")
+	}
+
+	messageID := message.DataPacket.GetChatMessage().GetMessageId()
+	cr := &Protocol_Data_Chat.ChatAcknowledge{
+		MessageId: proto.Uint32(messageID),
+		Accepted:  proto.Bool(true),
+	}
+
+	pc := &Protocol_Data_Chat.Packet{
+		ChatAcknowledge: cr,
+	}
+
+	data, _ := proto.Marshal(pc)
+	ack := r.constructProtocol(data, message.Channel)
+	r.send(ack)
+	return message.DataPacket.GetChatMessage().GetMessageText(), message.Channel, nil
+}
+
+// ListenAndWait is intended to be a background thread listening for all messages
+// a client will send, automaticall responding to some, and making the others available to
+// Listen()
+// Prerequisites:
+//             * Must have previously issued a successful Connect()
+func (r *Ricochet) ListenAndWait() error {
+	for true {
+		packets, err := r.getMessages()
+		if err != nil {
+			return errors.New("Error attempted to get new messages")
+		}
+
+		for _, packet := range packets {
+			if packet.Channel == 0 {
+				// This is a Control Channel Message
+				message, _ := r.decodePacket(packet, CONTROL)
+
+				// Automatically accept new channels
+				if message.ControlPacket.GetOpenChannel() != nil {
+					// TODO Reject if already in use.
+					cr := &Protocol_Data_Control.ChannelResult{
+						ChannelIdentifier: proto.Int32(message.ControlPacket.GetOpenChannel().GetChannelIdentifier()),
+						Opened:            proto.Bool(true),
+					}
+
+					pc := &Protocol_Data_Control.Packet{
+						ChannelResult: cr,
+					}
+
+					data, _ := proto.Marshal(pc)
+					openChannel := r.constructProtocol(data, 0)
+					r.logger.Print("Opening Channel: ", pc)
+					r.send(openChannel)
+					r.channelState[int(message.ControlPacket.GetOpenChannel().GetChannelIdentifier())] = 1
+					break
+				}
+
+				if message.ControlPacket.GetChannelResult() != nil {
+					channelResult := message.ControlPacket.GetChannelResult()
+					if channelResult.GetOpened() == true {
+						r.logger.Print("Channel Opened Successfully: ", channelResult.GetChannelIdentifier())
+						r.channelState[int(message.ControlPacket.GetChannelResult().GetChannelIdentifier())] = 1
+					}
+				}
+
+			} else {
+				// At this point the only other expected type of message
+				// is a Chat Message
+				message, _ := r.decodePacket(packet, DATA)
+				r.logger.Print("Receieved Data Packet: ", message)
+				r.channel <- message
+			}
+		}
+	}
+	return nil
+}
+
+// decodePacket take a raw RicochetData message and decodes it based on a given MessageType
+func (r *Ricochet) decodePacket(packet RicochetData, t MessageType) (rm RicochetMessage, err error) {
+
+	rm.Channel = packet.Channel
+
+	if t == CONTROL {
+		res := new(Protocol_Data_Control.Packet)
+		err = proto.Unmarshal(packet.Data[:], res)
+		rm.ControlPacket = res
+	} else if t == AUTH {
+		res := new(Protocol_Data_AuthHiddenService.Packet)
+		err = proto.Unmarshal(packet.Data[:], res)
+		rm.AuthPacket = res
+	} else if t == DATA {
+		res := new(Protocol_Data_Chat.Packet)
+		err = proto.Unmarshal(packet.Data[:], res)
+		rm.DataPacket = res
+	}
+
+	if err != nil {
+		r.logger.Fatal("Error Unmarshalling Response", err)
+	}
+	return rm, err
+}
+
+// getMessages returns an array of new messages received from the ricochet client
+func (r *Ricochet) getMessages() ([]RicochetData, error) {
+	buf, err := r.recv()
+	if err != nil {
+		return nil, errors.New("Failed to retrieve new messages from the client")
+	}
+
+	pos := 0
+	finished := false
+	datas := []RicochetData{}
+
+	for !finished {
+		size := int(binary.BigEndian.Uint16(buf[pos+0 : pos+2]))
+		channel := int(binary.BigEndian.Uint16(buf[pos+2 : pos+4]))
+		r.logger.Println(buf[pos+2 : pos+4])
+
+		if pos+size > len(buf) {
+			return datas, errors.New("Partial data packet received")
+		}
+
+		data := RicochetData{
+			Channel: int(channel),
+			Data:    buf[pos+4 : pos+size],
+		}
+		r.logger.Println("Got new Data:", data)
+		datas = append(datas, data)
+		pos += size
+		if pos >= len(buf) {
+			finished = true
+		}
+	}
+	return datas, nil
+}
+
+// recv reads data from the client, and returns the raw byte array, else error.
+func (r *Ricochet) recv() ([]byte, error) {
+	buf := make([]byte, 4096)
+	n, err := r.conn.Read(buf)
+	r.logger.Print("Received Response From Service: ", n, err)
+	if err != nil {
+		return nil, err
+	}
+	ret := make([]byte, n)
+	copy(ret[:], buf[:])
+	return ret, nil
 }
