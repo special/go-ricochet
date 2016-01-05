@@ -41,11 +41,11 @@ const (
 // Ricochet is a protocol to conducting anonymous IM.
 type Ricochet struct {
 	conn         net.Conn
-	privateKey   *pem.Block
+	privateKey   *rsa.PrivateKey
 	logger       *log.Logger
 	channelState map[int]int
 	channel      chan RicochetMessage
-	known       bool
+	known        bool
 }
 
 // RicochetData is a structure containing the raw data and the channel it the
@@ -64,7 +64,7 @@ type RicochetMessage struct {
 }
 
 func (r *Ricochet) IsKnownContact() bool {
-    return r.known
+	return r.known
 }
 
 // Init sets up the Ricochet object. It takes in a filename of a hidden service
@@ -89,7 +89,9 @@ func (r *Ricochet) Init(filename string, debugLog bool) {
 		r.logger.Print("No valid PEM data found")
 	}
 
-	r.privateKey = block
+	r.privateKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
+	r.handleFatal(err, "Private key can't be decoded")
+
 	r.channelState = make(map[int]int)
 	r.channel = make(chan RicochetMessage)
 }
@@ -105,12 +107,10 @@ func (r *Ricochet) Connect(from string, to string) error {
 		toAddr := strings.Split(to, "|")
 		tcpAddr, err := net.ResolveTCPAddr("tcp", toAddr[0])
 		if err != nil {
-			r.logger.Fatal("Cannot Resolve TCP Address ", err)
 			return errors.New("Cannot Resolve Local TCP Address")
 		}
 		r.conn, err = net.DialTCP("tcp", nil, tcpAddr)
 		if err != nil {
-			r.logger.Fatal("Cannot Dial TCP Address ", err)
 			return errors.New("Cannot Dial Local TCP Address")
 		}
 		r.logger.Print("Connected to " + to + " as " + toAddr[1])
@@ -120,7 +120,6 @@ func (r *Ricochet) Connect(from string, to string) error {
 		r.logger.Print("Connecting to ", to+".onion:9878")
 		conn, err := dialSocksProxy("", to+".onion:9878")
 		if err != nil {
-			r.logger.Fatal("Cannot Dial Remove Address ", err)
 			return errors.New("Cannot Dial Remote Ricochet Address")
 		}
 		r.conn = conn
@@ -144,7 +143,7 @@ func (r *Ricochet) Connect(from string, to string) error {
 	data, err := proto.Marshal(pc)
 
 	if err != nil {
-		r.logger.Fatal("Cannot Marshal Open Channel Message: ", err)
+		return errors.New("Cannot Marshal Open Channel Message")
 	}
 
 	r.sendPacket(data, 0)
@@ -175,21 +174,18 @@ func (r *Ricochet) Connect(from string, to string) error {
 	hmac := mac.Sum(nil)
 	r.logger.Print("Got HMAC: ", hmac)
 
-	privateKey, err := x509.ParsePKCS1PrivateKey(r.privateKey.Bytes)
-	r.handleFatal(err, "Private key can't be decoded")
-
 	// DER Encode the Public Key
 	publickeybytes, err := asn1.Marshal(rsa.PublicKey{
-		N: privateKey.PublicKey.N,
-		E: privateKey.PublicKey.E,
+		N: r.privateKey.PublicKey.N,
+		E: r.privateKey.PublicKey.E,
 	})
 
-	signature, _ := rsa.SignPKCS1v15(nil, privateKey, crypto.SHA256, hmac)
+	signature, _ := rsa.SignPKCS1v15(nil, r.privateKey, crypto.SHA256, hmac)
 	signatureBytes := make([]byte, 128)
 	copy(signatureBytes[:], signature[:])
 
 	r.logger.Print("Signature Length: ", len(signatureBytes))
-	r.logger.Print("Public Key Length: ", len(publickeybytes), ", Bit Size: ", privateKey.PublicKey.N.BitLen())
+	r.logger.Print("Public Key Length: ", len(publickeybytes), ", Bit Size: ", r.privateKey.PublicKey.N.BitLen())
 
 	// Construct a Proof Message
 	proof := &Protocol_Data_AuthHiddenService.Proof{
@@ -204,15 +200,15 @@ func (r *Ricochet) Connect(from string, to string) error {
 
 	data, err = proto.Marshal(ahsPacket)
 	r.sendPacket(data, 1)
-	
+
 	response, _ = r.getMessages()
 	resultResponse, _ := r.decodePacket(response[0], AUTH)
 	r.logger.Print("Received Result: ", resultResponse)
-    
-    if resultResponse.AuthPacket.GetResult().GetAccepted() != true {
-        return errors.New("authorization failed")
-    }
-    
+
+	if resultResponse.AuthPacket.GetResult().GetAccepted() != true {
+		return errors.New("authorization failed")
+	}
+
 	r.known = resultResponse.AuthPacket.GetResult().GetIsKnownContact()
 	return nil
 }
@@ -241,7 +237,7 @@ func (r *Ricochet) OpenChannel(channelType string, id int) error {
 // SendContactRequest initiates a contact request to the server.
 // Prerequisites:
 //              * Must have Previously issued a successful Connect()
-func (r *Ricochet) SendContactRequest(nick string, message string) {
+func (r *Ricochet) SendContactRequest(nick string, message string) error {
 	// Construct a Contact Request Channel
 	oc := &Protocol_Data_Control.OpenChannel{
 		ChannelIdentifier: proto.Int32(3),
@@ -260,11 +256,11 @@ func (r *Ricochet) SendContactRequest(nick string, message string) {
 	data, err := proto.Marshal(pc)
 
 	if err != nil {
-		r.logger.Fatal("Cannot Marshal Open Channel Message: ", err)
+		return errors.New("Cannot Marshal Open Channel Message")
 	}
 
 	r.sendPacket(data, 0)
-
+	return nil
 }
 
 // SendMessage sends a Chat Message (message) to a give Channel (channel).
@@ -286,7 +282,7 @@ func (r *Ricochet) SendMessage(message string, channel int) {
 }
 
 // negotiateVersion Perform version negotiation with the connected host.
-func (r *Ricochet) negotiateVersion() {
+func (r *Ricochet) negotiateVersion() error {
 	version := make([]byte, 4)
 	version[0] = 0x49
 	version[1] = 0x4D
@@ -297,14 +293,15 @@ func (r *Ricochet) negotiateVersion() {
 	res, err := r.recv()
 
 	if len(res) != 1 || err != nil {
-		r.logger.Fatal("Failed Version Negotiating: ", res, err)
+		return errors.New("Failed Version Negotiating")
 	}
 
 	if res[0] != 1 {
-		r.logger.Fatal("Failed Version Negotiating - Invalid Version ", res)
+		return errors.New("Failed Version Negotiating - Invalid Version ")
 	}
 
 	r.logger.Print("Successfully Negotiated Version ", res[0])
+	return nil
 }
 
 // sendPacket places the data into a structure needed for the client to
@@ -318,7 +315,6 @@ func (r *Ricochet) sendPacket(data []byte, channel int) {
 	copy(header[4:], data[:])
 	fmt.Fprintf(r.conn, "%s", header)
 }
-
 
 // Listen blocks and waits for a new message to arrive from the connected user
 // once a message has arrived, it returns the message and the channel it occured
@@ -344,9 +340,9 @@ func (r *Ricochet) Listen() (string, int, error) {
 		ChatAcknowledge: cr,
 	}
 
-	data,err := proto.Marshal(pc)
+	data, err := proto.Marshal(pc)
 	if err != nil {
-	    return "",0,errors.New("Failed to serialize chat message")
+		return "", 0, errors.New("Failed to serialize chat message")
 	}
 
 	r.sendPacket(data, message.Channel)
@@ -368,11 +364,11 @@ func (r *Ricochet) ListenAndWait() error {
 		for _, packet := range packets {
 			if packet.Channel == 0 {
 				// This is a Control Channel Message
-				message,err := r.decodePacket(packet, CONTROL)
-				
+				message, err := r.decodePacket(packet, CONTROL)
+
 				if err != nil {
-				    r.logger.Printf("Failed to decode control packet, discarding")
-				    break;
+					r.logger.Printf("Failed to decode control packet, discarding")
+					break
 				}
 
 				// Automatically accept new channels
@@ -387,9 +383,10 @@ func (r *Ricochet) ListenAndWait() error {
 						ChannelResult: cr,
 					}
 
-					data,err := proto.Marshal(pc)
-                    r.handleFatal(err, "error marshalling control protocol")
-					
+					data, err := proto.Marshal(pc)
+					// TODO we should set up some kind of error channel.
+					r.handleFatal(err, "error marshalling control protocol")
+
 					r.logger.Printf("Client Opening Channel: %d\n", message.ControlPacket.GetOpenChannel().GetChannelIdentifier())
 					r.sendPacket(data, 0)
 					r.channelState[int(message.ControlPacket.GetOpenChannel().GetChannelIdentifier())] = 1
@@ -404,7 +401,7 @@ func (r *Ricochet) ListenAndWait() error {
 					}
 					break
 				}
-				
+
 				r.logger.Printf("Received Unknown Control Message\n")
 
 			} else if packet.Channel == 3 {
@@ -413,10 +410,10 @@ func (r *Ricochet) ListenAndWait() error {
 			} else {
 				// At this point the only other expected type of message
 				// is a Chat Message
-				message,err := r.decodePacket(packet, DATA)
-			    if err != nil {
-				    r.logger.Printf("Failed to decode data packet, discarding")
-				    break;
+				message, err := r.decodePacket(packet, DATA)
+				if err != nil {
+					r.logger.Printf("Failed to decode data packet, discarding")
+					break
 				}
 				r.channel <- message
 			}
@@ -445,7 +442,7 @@ func (r *Ricochet) decodePacket(packet RicochetData, t MessageType) (rm Ricochet
 	}
 
 	if err != nil {
-		r.logger.Fatal("Error Unmarshalling Response", err)
+		return rm, errors.New("Error Unmarshalling Response")
 	}
 	return rm, err
 }
@@ -496,7 +493,7 @@ func (r *Ricochet) recv() ([]byte, error) {
 }
 
 func (r *Ricochet) handleFatal(err error, message string) {
-    if err != nil {
-        r.logger.Fatal(message)
-    }
+	if err != nil {
+		r.logger.Fatal(message)
+	}
 }
