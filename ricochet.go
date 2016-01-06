@@ -201,7 +201,12 @@ func (r *Ricochet) Connect(from string, to string) error {
 	data, err = proto.Marshal(ahsPacket)
 	r.sendPacket(data, 1)
 
-	response, _ = r.getMessages()
+	response, err = r.getMessages()
+
+	if err != nil {
+		return err
+	}
+
 	resultResponse, _ := r.decodePacket(response[0], AUTH)
 	r.logger.Print("Received Result: ", resultResponse)
 
@@ -288,6 +293,7 @@ func (r *Ricochet) negotiateVersion() error {
 	version[1] = 0x4D
 	version[2] = 0x01
 	version[3] = 0x01
+
 	fmt.Fprintf(r.conn, "%s", version)
 	r.logger.Print("Negotiating Version ", version)
 	res, err := r.recv()
