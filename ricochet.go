@@ -12,7 +12,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/s-rah/go-ricochet/auth"
 	"github.com/s-rah/go-ricochet/chat"
-	"github.com/s-rah/go-ricochet/contact"
 	"github.com/s-rah/go-ricochet/control"
 	"io/ioutil"
 	"log"
@@ -45,13 +44,13 @@ type Ricochet struct {
 // RicochetData is a structure containing the raw data and the channel it the
 // message originated on.
 type RicochetData struct {
-	Channel int
+	Channel int32
 	Data    []byte
 }
 
 // RicochetMessage is a Wrapper Around Common Ricochet Protocol Strucutres
 type RicochetMessage struct {
-	Channel       int
+	Channel       int32
 	ControlPacket *Protocol_Data_Control.Packet
 	DataPacket    *Protocol_Data_Chat.Packet
 	AuthPacket    *Protocol_Data_AuthHiddenService.Packet
@@ -120,12 +119,11 @@ func (r *Ricochet) Connect(from string, to string) error {
 
 	r.negotiateVersion()
 
-
 	authHandler := new(AuthenticationHandler)
 	clientCookie := authHandler.GenClientCookie()
 
-    controlBuilder := new(ControlBuilder)
-	data, err := controlBuilder.OpenAuthenticationChannel(1, clientCookie)
+	messageBuilder := new(MessageBuilder)
+	data, err := messageBuilder.OpenAuthenticationChannel(1, clientCookie)
 
 	if err != nil {
 		return errors.New("Cannot Marshal Open Channel Message")
@@ -192,11 +190,11 @@ func (r *Ricochet) Connect(from string, to string) error {
 //              * Must have Previously issued a successful Connect()
 //              * If acting as the client, id must be odd, else even
 func (r *Ricochet) OpenChatChannel(id int32) error {
-    controlBuilder := new(ControlBuilder)
-	data,err := controlBuilder.OpenChatChannel(id)
+	messageBuilder := new(MessageBuilder)
+	data, err := messageBuilder.OpenChatChannel(id)
 
 	if err != nil {
-	    return errors.New("error constructing control channel message to open channel")
+		return errors.New("error constructing control channel message to open channel")
 	}
 
 	r.logger.Printf("Opening Chat Channel: %d", id)
@@ -207,26 +205,12 @@ func (r *Ricochet) OpenChatChannel(id int32) error {
 // SendContactRequest initiates a contact request to the server.
 // Prerequisites:
 //              * Must have Previously issued a successful Connect()
-func (r *Ricochet) SendContactRequest(nick string, message string) error {
-	// Construct a Contact Request Channel
-	oc := &Protocol_Data_Control.OpenChannel{
-		ChannelIdentifier: proto.Int32(3),
-		ChannelType:       proto.String("im.ricochet.contact.request"),
-	}
-
-	contactRequest := &Protocol_Data_ContactRequest.ContactRequest{
-		Nickname:    proto.String(nick),
-		MessageText: proto.String(message),
-	}
-
-	err := proto.SetExtension(oc, Protocol_Data_ContactRequest.E_ContactRequest, contactRequest)
-	pc := &Protocol_Data_Control.Packet{
-		OpenChannel: oc,
-	}
-	data, err := proto.Marshal(pc)
+func (r *Ricochet) SendContactRequest(channel int32, nick string, message string) error {
+	messageBuilder := new(MessageBuilder)
+	data, err := messageBuilder.OpenContactRequestChannel(channel, nick, message)
 
 	if err != nil {
-		return errors.New("Cannot Marshal Open Channel Message")
+		return errors.New("error constructing control channel message to send contact request")
 	}
 
 	r.sendPacket(data, 0)
@@ -237,18 +221,17 @@ func (r *Ricochet) SendContactRequest(nick string, message string) error {
 // Prerequisites:
 //             * Must have previously issued a successful Connect()
 //             * Must have previously opened channel with OpenChanel
-func (r *Ricochet) SendMessage(message string, channel int) {
-	// Construct a Contact Request Channel
-	cm := &Protocol_Data_Chat.ChatMessage{
-		MessageText: proto.String(message),
-	}
-	chatPacket := &Protocol_Data_Chat.Packet{
-		ChatMessage: cm,
+func (r *Ricochet) SendMessage(channel int32, message string) error {
+	messageBuilder := new(MessageBuilder)
+	data, err := messageBuilder.ChatMessage(message)
+
+	if err != nil {
+		return errors.New("error constructing control channel message to send chat message")
 	}
 
-	data, _ := proto.Marshal(chatPacket)
 	r.logger.Printf("Sending Message on Channel: %d", channel)
 	r.sendPacket(data, channel)
+	return nil
 }
 
 // negotiateVersion Perform version negotiation with the connected host.
@@ -277,7 +260,7 @@ func (r *Ricochet) negotiateVersion() error {
 
 // sendPacket places the data into a structure needed for the client to
 // decode the packet and writes the packet to the network.
-func (r *Ricochet) sendPacket(data []byte, channel int) {
+func (r *Ricochet) sendPacket(data []byte, channel int32) {
 	header := make([]byte, 4+len(data))
 	header[0] = byte(len(header) >> 8)
 	header[1] = byte(len(header) & 0x00FF)
@@ -294,7 +277,7 @@ func (r *Ricochet) sendPacket(data []byte, channel int) {
 // Prerequisites:
 //             * Must have previously issued a successful Connect()
 //             * Must have previously ran "go ricochet.ListenAndWait()"
-func (r *Ricochet) Listen() (string, int, error) {
+func (r *Ricochet) Listen() (string, int32, error) {
 	var message RicochetMessage
 	message = <-r.channel
 	r.logger.Printf("Received Chat Message on Channel %d", message.Channel)
@@ -439,7 +422,7 @@ func (r *Ricochet) getMessages() ([]RicochetData, error) {
 		}
 
 		data := RicochetData{
-			Channel: int(channel),
+			Channel: int32(channel),
 			Data:    buf[pos+4 : pos+size],
 		}
 

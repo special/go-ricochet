@@ -20,13 +20,13 @@ func main() {
 	go ricochet.ListenAndWait()
 	ricochet.OpenChatChannel(5)
 	time.Sleep(time.Second * 1)
-	ricochet.SendMessage("Hi I'm an echo bot, I echo what you say! ", 5)
+	ricochet.SendMessage(5, "Hi I'm an echo bot, I echo what you say!")
 
 	for true {
 		message,channel,_ := ricochet.Listen()
-		fmt.Print(message, channel)
+		fmt.Print(channel, message)
 		if message != "" {
-			ricochet.SendMessage(message, 5)
+			ricochet.SendMessage(5, message)
 		}
 	}
 }

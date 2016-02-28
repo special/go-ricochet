@@ -30,12 +30,12 @@ func (nr *NetworkResolver) Resolve(hostname string) (net.Conn, string, error) {
 
 		// return just the onion address, not the local override for the hostname
 		return conn, addrParts[1], nil
-	} 
-	
+	}
+
 	resolvedHostname := hostname
 	if strings.HasPrefix(hostname, "ricochet:") {
-	    addrParts := strings.Split(hostname, ":")
-	    resolvedHostname = addrParts[1]
+		addrParts := strings.Split(hostname, ":")
+		resolvedHostname = addrParts[1]
 	}
 
 	dialSocksProxy := socks.DialSocksProxy(socks.SOCKS5, "127.0.0.1:9050")

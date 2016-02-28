@@ -3,7 +3,7 @@ package goricochet
 import "testing"
 import "bytes"
 
-func TestAuthHandler(t *testing.T) {
+func TestGenChallenge(t *testing.T) {
 	authHandler := new(AuthenticationHandler)
 	authHandler.AddClientCookie([]byte("abcdefghijklmnop"))
 	authHandler.AddServerCookie([]byte("qrstuvwxyz012345"))
@@ -13,4 +13,20 @@ func TestAuthHandler(t *testing.T) {
 	if bytes.Compare(challenge[:], expectedChallenge[:]) != 0 {
 		t.Errorf("AuthenticationHandler Challenge Is Invalid, Got %x, Expected %x", challenge, expectedChallenge)
 	}
+}
+
+func TestGenClientCookie(t *testing.T) {
+  	authHandler := new(AuthenticationHandler)  
+  	clientCookie := authHandler.GenClientCookie()
+  	if clientCookie != authHandler.clientCookie {
+  	    t.Errorf("AuthenticationHandler Client Cookies are Different", clientCookie, authHandler.clientCookie)
+  	}
+}
+
+func TestGenServerCookie(t *testing.T) {
+  	authHandler := new(AuthenticationHandler)  
+  	serverCookie := authHandler.GenServerCookie()
+  	if serverCookie != authHandler.serverCookie {
+  	    t.Errorf("AuthenticationHandler Server Cookies are Different", serverCookie, authHandler.serverCookie)
+  	}
 }
