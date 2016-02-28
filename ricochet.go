@@ -2,10 +2,7 @@ package goricochet
 
 import (
 	"crypto"
-	"crypto/hmac"
-	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/binary"
@@ -17,13 +14,10 @@ import (
 	"github.com/s-rah/go-ricochet/chat"
 	"github.com/s-rah/go-ricochet/contact"
 	"github.com/s-rah/go-ricochet/control"
-	"h12.me/socks"
-	"io"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
-	"strings"
 )
 
 // MessageType details the different kinds of messages used by Ricochet
@@ -96,6 +90,19 @@ func (r *Ricochet) Init(filename string, debugLog bool) {
 	r.channel = make(chan RicochetMessage)
 }
 
+func (r *Ricochet) StartService(server RicochetService, port string) {
+	// Listen
+	ln, _ := net.Listen("tcp", port)
+	conn, _ := ln.Accept()
+	go r.runService(conn, server)
+}
+
+func (r *Ricochet) runService(conn net.Conn, server RicochetService) {
+	// Negotiate Version
+
+	// Loop For Messages
+}
+
 // Connect sets up a ricochet connection between from and to which are
 // both ricochet formated hostnames e.g. qn6uo4cmsrfv4kzq.onion. If this
 // function finished successfully then the connection can be assumed to
@@ -103,51 +110,28 @@ func (r *Ricochet) Init(filename string, debugLog bool) {
 // To specify a local port using the format "127.0.0.1:[port]|ricochet-id".
 func (r *Ricochet) Connect(from string, to string) error {
 
-	if strings.HasPrefix(to, "127.0.0.1") {
-		toAddr := strings.Split(to, "|")
-		tcpAddr, err := net.ResolveTCPAddr("tcp", toAddr[0])
-		if err != nil {
-			return errors.New("Cannot Resolve Local TCP Address")
-		}
-		r.conn, err = net.DialTCP("tcp", nil, tcpAddr)
-		if err != nil {
-			return errors.New("Cannot Dial Local TCP Address")
-		}
-		r.logger.Print("Connected to " + to + " as " + toAddr[1])
-		to = toAddr[1]
-	} else {
-		dialSocksProxy := socks.DialSocksProxy(socks.SOCKS5, "127.0.0.1:9050")
-		r.logger.Print("Connecting to ", to+".onion:9878")
-		conn, err := dialSocksProxy("", to+".onion:9878")
-		if err != nil {
-			return errors.New("Cannot Dial Remote Ricochet Address")
-		}
-		r.conn = conn
-		r.logger.Print("Connected to ", to+".onion:9878")
+	var err error
+	networkResolver := new(NetworkResolver)
+	r.conn, to, err = networkResolver.Resolve(to)
+
+	if err != nil {
+		return err
 	}
 
 	r.negotiateVersion()
 
-	// Construct an Open Channel Message
-	oc := &Protocol_Data_Control.OpenChannel{
-		ChannelIdentifier: proto.Int32(1),
-		ChannelType:       proto.String("im.ricochet.auth.hidden-service"),
-	}
 
-	var cookie [16]byte
-	io.ReadFull(rand.Reader, cookie[:])
-	err := proto.SetExtension(oc, Protocol_Data_AuthHiddenService.E_ClientCookie, cookie[:])
-	pc := &Protocol_Data_Control.Packet{
-		OpenChannel: oc,
-	}
-	data, err := proto.Marshal(pc)
+	authHandler := new(AuthenticationHandler)
+	clientCookie := authHandler.GenClientCookie()
+
+    controlBuilder := new(ControlBuilder)
+	data, err := controlBuilder.OpenAuthenticationChannel(1, clientCookie)
 
 	if err != nil {
 		return errors.New("Cannot Marshal Open Channel Message")
 	}
 
 	r.sendPacket(data, 0)
-	r.logger.Print("Opening Channel: ", pc)
 
 	response, _ := r.getMessages()
 	openChannelResponse, _ := r.decodePacket(response[0], CONTROL)
@@ -159,20 +143,7 @@ func (r *Ricochet) Connect(from string, to string) error {
 	}
 
 	sCookie, _ := proto.GetExtension(channelResult, Protocol_Data_AuthHiddenService.E_ServerCookie)
-	serverCookie, _ := sCookie.([]byte)
-
-	r.logger.Print("Starting Authentication with Server Cookie: ", serverCookie)
-
-	key := make([]byte, 32)
-	copy(key[0:16], cookie[:])
-	copy(key[16:], serverCookie)
-	value := []byte(from + to)
-	r.logger.Print("Got Hmac Key: ", key)
-	r.logger.Print("Got Proof Value: ", string(value))
-	mac := hmac.New(sha256.New, key)
-	mac.Write(value)
-	hmac := mac.Sum(nil)
-	r.logger.Print("Got HMAC: ", hmac)
+	authHandler.AddServerCookie(sCookie.([]byte))
 
 	// DER Encode the Public Key
 	publickeybytes, err := asn1.Marshal(rsa.PublicKey{
@@ -180,12 +151,10 @@ func (r *Ricochet) Connect(from string, to string) error {
 		E: r.privateKey.PublicKey.E,
 	})
 
-	signature, _ := rsa.SignPKCS1v15(nil, r.privateKey, crypto.SHA256, hmac)
+	signature, _ := rsa.SignPKCS1v15(nil, r.privateKey, crypto.SHA256, authHandler.GenChallenge(from, to))
+
 	signatureBytes := make([]byte, 128)
 	copy(signatureBytes[:], signature[:])
-
-	r.logger.Print("Signature Length: ", len(signatureBytes))
-	r.logger.Print("Public Key Length: ", len(publickeybytes), ", Bit Size: ", r.privateKey.PublicKey.N.BitLen())
 
 	// Construct a Proof Message
 	proof := &Protocol_Data_AuthHiddenService.Proof{
@@ -218,23 +187,19 @@ func (r *Ricochet) Connect(from string, to string) error {
 	return nil
 }
 
-// OpenChannel opens a new channel with the given type and id
+// OpenChannel opens a new chat channel with the given id
 // Prerequisites:
 //              * Must have Previously issued a successful Connect()
-//              * If acting as the client, id must be odd (currently this is the
-//                only supported option.
-func (r *Ricochet) OpenChannel(channelType string, id int) error {
-	oc := &Protocol_Data_Control.OpenChannel{
-		ChannelIdentifier: proto.Int32(int32(id)),
-		ChannelType:       proto.String(channelType),
+//              * If acting as the client, id must be odd, else even
+func (r *Ricochet) OpenChatChannel(id int32) error {
+    controlBuilder := new(ControlBuilder)
+	data,err := controlBuilder.OpenChatChannel(id)
+
+	if err != nil {
+	    return errors.New("error constructing control channel message to open channel")
 	}
 
-	pc := &Protocol_Data_Control.Packet{
-		OpenChannel: oc,
-	}
-
-	data, _ := proto.Marshal(pc)
-	r.logger.Printf("Opening %s Channel: %d", channelType, id)
+	r.logger.Printf("Opening Chat Channel: %d", id)
 	r.sendPacket(data, 0)
 	return nil
 }
@@ -319,6 +284,7 @@ func (r *Ricochet) sendPacket(data []byte, channel int) {
 	header[2] = 0x00
 	header[3] = byte(channel)
 	copy(header[4:], data[:])
+
 	fmt.Fprintf(r.conn, "%s", header)
 }
 

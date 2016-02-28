@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/s-rah/go-ricochet"
+	"time"
 )
 
 func main() {
@@ -17,7 +18,8 @@ func main() {
 	// ricochet.SendContactRequest("EchoBot", "I'm an EchoBot")
 
 	go ricochet.ListenAndWait()
-	ricochet.OpenChannel("im.ricochet.chat", 5)
+	ricochet.OpenChatChannel(5)
+	time.Sleep(time.Second * 1)
 	ricochet.SendMessage("Hi I'm an echo bot, I echo what you say! ", 5)
 
 	for true {
