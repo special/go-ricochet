@@ -1,4 +1,4 @@
-# GoRicochet
+# GoRicochet [![Build Status](https://travis-ci.org/s-rah/go-ricochet.svg?branch=master)](https://travis-ci.org/s-rah/go-ricochet)
 
 GoRicochet is an implementation of the [Ricochet Protocol](https://ricochet.im)
 in Go.
