@@ -16,17 +16,17 @@ func TestGenChallenge(t *testing.T) {
 }
 
 func TestGenClientCookie(t *testing.T) {
-  	authHandler := new(AuthenticationHandler)  
-  	clientCookie := authHandler.GenClientCookie()
-  	if clientCookie != authHandler.clientCookie {
-  	    t.Errorf("AuthenticationHandler Client Cookies are Different", clientCookie, authHandler.clientCookie)
-  	}
+	authHandler := new(AuthenticationHandler)
+	clientCookie := authHandler.GenClientCookie()
+	if clientCookie != authHandler.clientCookie {
+		t.Errorf("AuthenticationHandler Client Cookies are Different", clientCookie, authHandler.clientCookie)
+	}
 }
 
 func TestGenServerCookie(t *testing.T) {
-  	authHandler := new(AuthenticationHandler)  
-  	serverCookie := authHandler.GenServerCookie()
-  	if serverCookie != authHandler.serverCookie {
-  	    t.Errorf("AuthenticationHandler Server Cookies are Different", serverCookie, authHandler.serverCookie)
-  	}
+	authHandler := new(AuthenticationHandler)
+	serverCookie := authHandler.GenServerCookie()
+	if serverCookie != authHandler.serverCookie {
+		t.Errorf("AuthenticationHandler Server Cookies are Different", serverCookie, authHandler.serverCookie)
+	}
 }
