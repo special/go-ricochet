@@ -1,44 +1,21 @@
 package goricochet
 
 import (
-	"crypto"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/asn1"
 	"encoding/binary"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/s-rah/go-ricochet/auth"
-	"github.com/s-rah/go-ricochet/chat"
-	"github.com/s-rah/go-ricochet/control"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
 )
 
-// MessageType details the different kinds of messages used by Ricochet
-type MessageType int
-
-const (
-	// CONTROL messages are those sent on channel 0
-	CONTROL MessageType = iota
-	// AUTH messages are those that deal with authentication
-	AUTH = iota
-	// DATA covers both chat and (later) file handling and other non-control messages.
-	DATA = iota
-)
-
 // Ricochet is a protocol to conducting anonymous IM.
 type Ricochet struct {
-	conn         net.Conn
-	privateKey   *rsa.PrivateKey
-	logger       *log.Logger
-	channelState map[int]int
-	channel      chan RicochetMessage
-	known        bool
+	conn   net.Conn
+	logger *log.Logger
 }
 
 // RicochetData is a structure containing the raw data and the channel it the
@@ -48,58 +25,14 @@ type RicochetData struct {
 	Data    []byte
 }
 
-// RicochetMessage is a Wrapper Around Common Ricochet Protocol Strucutres
-type RicochetMessage struct {
-	Channel       int32
-	ControlPacket *Protocol_Data_Control.Packet
-	DataPacket    *Protocol_Data_Chat.Packet
-	AuthPacket    *Protocol_Data_AuthHiddenService.Packet
-}
-
-func (r *Ricochet) IsKnownContact() bool {
-	return r.known
-}
-
-// Init sets up the Ricochet object. It takes in a filename of a hidden service
-// private_key file so it can successfully authenticate itself with other
-// clients.
-func (r *Ricochet) Init(filename string, debugLog bool) {
+// Init sets up the Ricochet object.
+func (r *Ricochet) Init(debugLog bool) {
 
 	if debugLog {
 		r.logger = log.New(os.Stdout, "[Ricochet]: ", log.Ltime|log.Lmicroseconds)
 	} else {
 		r.logger = log.New(ioutil.Discard, "[Ricochet]: ", log.Ltime|log.Lmicroseconds)
 	}
-
-	pemData, err := ioutil.ReadFile(filename)
-
-	if err != nil {
-		r.logger.Print("Error Reading Private Key: ", err)
-	}
-
-	block, _ := pem.Decode(pemData)
-	if block == nil || block.Type != "RSA PRIVATE KEY" {
-		r.logger.Print("No valid PEM data found")
-	}
-
-	r.privateKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
-	r.handleFatal(err, "Private key can't be decoded")
-
-	r.channelState = make(map[int]int)
-	r.channel = make(chan RicochetMessage)
-}
-
-func (r *Ricochet) StartService(server RicochetService, port string) {
-	// Listen
-	ln, _ := net.Listen("tcp", port)
-	conn, _ := ln.Accept()
-	go r.runService(conn, server)
-}
-
-func (r *Ricochet) runService(conn net.Conn, server RicochetService) {
-	// Negotiate Version
-
-	// Loop For Messages
 }
 
 // Connect sets up a ricochet connection between from and to which are
@@ -108,7 +41,6 @@ func (r *Ricochet) runService(conn net.Conn, server RicochetService) {
 // be open and authenticated.
 // To specify a local port using the format "127.0.0.1:[port]|ricochet-id".
 func (r *Ricochet) Connect(from string, to string) error {
-
 	var err error
 	networkResolver := new(NetworkResolver)
 	r.conn, to, err = networkResolver.Resolve(to)
@@ -117,46 +49,27 @@ func (r *Ricochet) Connect(from string, to string) error {
 		return err
 	}
 
-	r.negotiateVersion()
+	return r.negotiateVersion()
+}
 
-	authHandler := new(AuthenticationHandler)
-	clientCookie := authHandler.GenClientCookie()
-
+// Authenticate opens an Authentication Channel and send a client cookie
+func (r *Ricochet) Authenticate(channelID int32, clientCookie [16]byte) error {
 	messageBuilder := new(MessageBuilder)
-	data, err := messageBuilder.OpenAuthenticationChannel(1, clientCookie)
+	data, err := messageBuilder.OpenAuthenticationChannel(channelID, clientCookie)
 
 	if err != nil {
 		return errors.New("Cannot Marshal Open Channel Message")
 	}
-
+	r.logger.Printf("Sending Open Channel with Auth Request (channel:%d)", channelID)
 	r.sendPacket(data, 0)
+	return nil
+}
 
-	response, _ := r.getMessages()
-	openChannelResponse, _ := r.decodePacket(response[0], CONTROL)
-	r.logger.Print("Received Response: ", openChannelResponse)
-	channelResult := openChannelResponse.ControlPacket.GetChannelResult()
-
-	if channelResult.GetOpened() == true {
-		r.logger.Print("Channel Opened Successfully: ", channelResult.GetChannelIdentifier())
-	}
-
-	sCookie, _ := proto.GetExtension(channelResult, Protocol_Data_AuthHiddenService.E_ServerCookie)
-	authHandler.AddServerCookie(sCookie.([]byte))
-
-	// DER Encode the Public Key
-	publickeybytes, err := asn1.Marshal(rsa.PublicKey{
-		N: r.privateKey.PublicKey.N,
-		E: r.privateKey.PublicKey.E,
-	})
-
-	signature, _ := rsa.SignPKCS1v15(nil, r.privateKey, crypto.SHA256, authHandler.GenChallenge(from, to))
-
-	signatureBytes := make([]byte, 128)
-	copy(signatureBytes[:], signature[:])
-
+// SendProof sends an authentication proof in response to a challenge.
+func (r *Ricochet) SendProof(channelID int32, publickeyBytes []byte, signatureBytes []byte) error {
 	// Construct a Proof Message
 	proof := &Protocol_Data_AuthHiddenService.Proof{
-		PublicKey: publickeybytes,
+		PublicKey: publickeyBytes,
 		Signature: signatureBytes,
 	}
 
@@ -165,23 +78,14 @@ func (r *Ricochet) Connect(from string, to string) error {
 		Result: nil,
 	}
 
-	data, err = proto.Marshal(ahsPacket)
-	r.sendPacket(data, 1)
-
-	response, err = r.getMessages()
+	data, err := proto.Marshal(ahsPacket)
 
 	if err != nil {
 		return err
 	}
 
-	resultResponse, _ := r.decodePacket(response[0], AUTH)
-	r.logger.Print("Received Result: ", resultResponse)
-
-	if resultResponse.AuthPacket.GetResult().GetAccepted() != true {
-		return errors.New("authorization failed")
-	}
-
-	r.known = resultResponse.AuthPacket.GetResult().GetIsKnownContact()
+	r.logger.Printf("Sending Proof Auth Request (channel:%d)", channelID)
+	r.sendPacket(data, channelID)
 	return nil
 }
 
@@ -214,6 +118,32 @@ func (r *Ricochet) SendContactRequest(channel int32, nick string, message string
 	}
 
 	r.sendPacket(data, 0)
+	return nil
+}
+
+// AckOpenChannel acknowledges a previously received open channel message
+// Prerequisites:
+//              * Must have Previously issued a successful Connect()
+func (r *Ricochet) AckOpenChannel(channel int32, result bool) error {
+	messageBuilder := new(MessageBuilder)
+	data, err := messageBuilder.AckOpenChannel(channel, result)
+	if err != nil {
+		return errors.New("Failed to serialize open channel ack")
+	}
+	r.sendPacket(data, 0)
+	return nil
+}
+
+// AckChatMessage acknowledges a previously received chat message.
+// Prerequisites:
+//              * Must have Previously issued a successful Connect()
+func (r *Ricochet) AckChatMessage(channel int32, messageID int32) error {
+	messageBuilder := new(MessageBuilder)
+	data, err := messageBuilder.AckChatMessage(messageID)
+	if err != nil {
+		return errors.New("Failed to serialize chat message ack")
+	}
+	r.sendPacket(data, channel)
 	return nil
 }
 
@@ -267,41 +197,7 @@ func (r *Ricochet) sendPacket(data []byte, channel int32) {
 	header[2] = 0x00
 	header[3] = byte(channel)
 	copy(header[4:], data[:])
-
 	fmt.Fprintf(r.conn, "%s", header)
-}
-
-// Listen blocks and waits for a new message to arrive from the connected user
-// once a message has arrived, it returns the message and the channel it occured
-// on, else it returns an error.
-// Prerequisites:
-//             * Must have previously issued a successful Connect()
-//             * Must have previously ran "go ricochet.ListenAndWait()"
-func (r *Ricochet) Listen() (string, int32, error) {
-	var message RicochetMessage
-	message = <-r.channel
-	r.logger.Printf("Received Chat Message on Channel %d", message.Channel)
-	if message.DataPacket.GetChatMessage() == nil {
-		return "", 0, errors.New("Did not receive a chat message")
-	}
-
-	messageID := message.DataPacket.GetChatMessage().GetMessageId()
-	cr := &Protocol_Data_Chat.ChatAcknowledge{
-		MessageId: proto.Uint32(messageID),
-		Accepted:  proto.Bool(true),
-	}
-
-	pc := &Protocol_Data_Chat.Packet{
-		ChatAcknowledge: cr,
-	}
-
-	data, err := proto.Marshal(pc)
-	if err != nil {
-		return "", 0, errors.New("Failed to serialize chat message")
-	}
-
-	r.sendPacket(data, message.Channel)
-	return message.DataPacket.GetChatMessage().GetMessageText(), message.Channel, nil
 }
 
 // ListenAndWait is intended to be a background thread listening for all messages
@@ -309,97 +205,65 @@ func (r *Ricochet) Listen() (string, int32, error) {
 // Listen()
 // Prerequisites:
 //             * Must have previously issued a successful Connect()
-func (r *Ricochet) ListenAndWait() error {
+func (r *Ricochet) ListenAndWait(serverHostname string, service RicochetService) error {
 	for true {
 		packets, err := r.getMessages()
-		if err != nil {
-			return errors.New("Error attempted to get new messages")
-		}
+		r.handleFatal(err, "Error attempted to get new messages")
+
+		messageDecoder := new(MessageDecoder)
 
 		for _, packet := range packets {
+
+			if len(packet.Data) == 0 {
+				r.logger.Printf("Closing Channel %d", packet.Channel)
+				service.OnChannelClose(packet.Channel, serverHostname)
+				break
+			}
+
 			if packet.Channel == 0 {
-				// This is a Control Channel Message
-				message, err := r.decodePacket(packet, CONTROL)
 
-				if err != nil {
-					r.logger.Printf("Failed to decode control packet, discarding")
-					break
-				}
+				message, err := messageDecoder.DecodeControlMessage(packet.Data)
 
-				// Automatically accept new channels
-				if message.ControlPacket.GetOpenChannel() != nil {
-					// TODO Reject if already in use.
-					cr := &Protocol_Data_Control.ChannelResult{
-						ChannelIdentifier: proto.Int32(message.ControlPacket.GetOpenChannel().GetChannelIdentifier()),
-						Opened:            proto.Bool(true),
-					}
-
-					pc := &Protocol_Data_Control.Packet{
-						ChannelResult: cr,
-					}
-
-					data, err := proto.Marshal(pc)
-					// TODO we should set up some kind of error channel.
-					r.handleFatal(err, "error marshalling control protocol")
-
-					r.logger.Printf("Client Opening Channel: %d\n", message.ControlPacket.GetOpenChannel().GetChannelIdentifier())
-					r.sendPacket(data, 0)
-					r.channelState[int(message.ControlPacket.GetOpenChannel().GetChannelIdentifier())] = 1
-					break
-				}
-
-				if message.ControlPacket.GetChannelResult() != nil {
-					channelResult := message.ControlPacket.GetChannelResult()
-					if channelResult.GetOpened() == true {
-						r.logger.Print("Channel Opened Successfully: ", channelResult.GetChannelIdentifier())
-						r.channelState[int(message.ControlPacket.GetChannelResult().GetChannelIdentifier())] = 1
-					}
-					break
-				}
-
-				r.logger.Printf("Received Unknown Control Message\n")
-
-			} else if packet.Channel == 3 {
-				// Contact Request
-				r.logger.Printf("Received Unknown Message on Channel 3\n")
-			} else {
-				// At this point the only other expected type of message
-				// is a Chat Message
-				message, err := r.decodePacket(packet, DATA)
 				if err != nil {
 					r.logger.Printf("Failed to decode data packet, discarding")
 					break
 				}
-				r.channel <- message
+
+				if message.Type == "openchannel" && message.Ack == false {
+					r.logger.Printf("new open channel request %d %s", message.ChannelID, serverHostname)
+					service.OnOpenChannelRequest(message.ChannelID, serverHostname)
+				} else if message.Type == "openchannel" && message.Ack == true {
+					r.logger.Printf("new open channel request ack %d %s", message.ChannelID, serverHostname)
+					service.OnOpenChannelRequestAck(message.ChannelID, serverHostname, message.Accepted)
+				} else if message.Type == "openauthchannel" && message.Ack == true {
+					r.logger.Printf("new authentication challenge %d %s", message.ChannelID, serverHostname)
+					service.OnAuthenticationChallenge(message.ChannelID, serverHostname, message.ServerCookie)
+				} else {
+					r.logger.Printf("Received Unknown Control Message\n", message)
+				}
+			} else if packet.Channel == 1 {
+				result, _ := messageDecoder.DecodeAuthMessage(packet.Data)
+				r.logger.Printf("newreceived auth result %d", packet.Channel)
+				service.OnAuthenticationResult(1, serverHostname, result)
+			} else {
+
+				// At this point the only other expected type of message is a Chat Message
+				messageDecoder := new(MessageDecoder)
+				message, err := messageDecoder.DecodeChatMessage(packet.Data)
+				if err != nil {
+					r.logger.Printf("Failed to decode data packet, discarding on channel %d", packet.Channel)
+					break
+				}
+
+				if message.Ack == true {
+					service.OnChatMessageAck(packet.Channel, serverHostname, message.MessageID)
+				} else {
+					service.OnChatMessage(packet.Channel, serverHostname, message.MessageID, message.Message)
+				}
 			}
 		}
 	}
 	return nil
-}
-
-// decodePacket take a raw RicochetData message and decodes it based on a given MessageType
-func (r *Ricochet) decodePacket(packet RicochetData, t MessageType) (rm RicochetMessage, err error) {
-
-	rm.Channel = packet.Channel
-
-	if t == CONTROL {
-		res := new(Protocol_Data_Control.Packet)
-		err = proto.Unmarshal(packet.Data[:], res)
-		rm.ControlPacket = res
-	} else if t == AUTH {
-		res := new(Protocol_Data_AuthHiddenService.Packet)
-		err = proto.Unmarshal(packet.Data[:], res)
-		rm.AuthPacket = res
-	} else if t == DATA {
-		res := new(Protocol_Data_Chat.Packet)
-		err = proto.Unmarshal(packet.Data[:], res)
-		rm.DataPacket = res
-	}
-
-	if err != nil {
-		return rm, errors.New("Error Unmarshalling Response")
-	}
-	return rm, err
 }
 
 // getMessages returns an array of new messages received from the ricochet client
@@ -432,6 +296,7 @@ func (r *Ricochet) getMessages() ([]RicochetData, error) {
 			finished = true
 		}
 	}
+	r.logger.Printf("Got %d Packets", len(datas))
 	return datas, nil
 }
 

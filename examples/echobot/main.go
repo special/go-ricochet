@@ -1,32 +1,31 @@
 package main
 
 import (
-	"fmt"
 	"github.com/s-rah/go-ricochet"
-	"time"
 )
 
+type EchoBotService struct {
+    goricochet.StandardRicochetService
+}
+
+func (ebs * EchoBotService) OnAuthenticationResult(channelID int32, serverHostname string, result bool) {
+    if true {
+        ebs.Ricochet().OpenChatChannel(5)
+        ebs.Ricochet().SendMessage(5, "Hi I'm an echo bot, I echo what you say!")
+    }
+}
+
+func (ebs * EchoBotService) OnChatMessage(channelID int32, serverHostname string, messageId int32, message string) {
+   ebs.Ricochet().AckChatMessage(channelID, messageId)
+   ebs.Ricochet().SendMessage(5, message)
+}
+
 func main() {
-	ricochet := new(goricochet.Ricochet)
-
-	// You will want to replace these values with your own test credentials
-	ricochet.Init("./private_key", true)
-	ricochet.Connect("kwke2hntvyfqm7dr", "127.0.0.1:55555|jlq67qzo6s4yp3sp")
-	
-	// Not needed past the initial run
-	// TODO need to wait for contact response before sending OpenChannel
-	// ricochet.SendContactRequest("EchoBot", "I'm an EchoBot")
-
-	go ricochet.ListenAndWait()
-	ricochet.OpenChatChannel(5)
-	time.Sleep(time.Second * 1)
-	ricochet.SendMessage(5, "Hi I'm an echo bot, I echo what you say!")
-
-	for true {
-		message,channel,_ := ricochet.Listen()
-		fmt.Print(channel, message)
-		if message != "" {
-			ricochet.SendMessage(5, message)
-		}
+    ricochetService := new(EchoBotService)
+    ricochetService.Init("./private_key", "kwke2hntvyfqm7dr") 
+	err := ricochetService.Ricochet().Connect("kwke2hntvyfqm7dr", "127.0.0.1:55555|jlq67qzo6s4yp3sp")
+	if err == nil { 
+	    ricochetService.OnConnect("jlq67qzo6s4yp3sp")
+        ricochetService.Ricochet().ListenAndWait("jlq67qzo6s4yp3sp", ricochetService)
 	}
 }

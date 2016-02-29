@@ -26,6 +26,18 @@ func (mb *MessageBuilder) OpenChatChannel(channelID int32) ([]byte, error) {
 	return proto.Marshal(pc)
 }
 
+// AckOpenChannel constructs a message to acknowledge a previous open channel operation.
+func (mb *MessageBuilder) AckOpenChannel(channelID int32, opened bool) ([]byte, error) {
+	cr := &Protocol_Data_Control.ChannelResult{
+		ChannelIdentifier: proto.Int32(channelID),
+		Opened:            proto.Bool(opened),
+	}
+	pc := &Protocol_Data_Control.Packet{
+		ChannelResult: cr,
+	}
+	return proto.Marshal(pc)
+}
+
 // OpenContactRequestChannel contructs a message which will reuqest to open a channel for
 // a contact request on the given channelID, with the given nick and message.
 func (mb *MessageBuilder) OpenContactRequestChannel(channelID int32, nick string, message string) ([]byte, error) {
@@ -78,4 +90,16 @@ func (mb *MessageBuilder) ChatMessage(message string) ([]byte, error) {
 		ChatMessage: cm,
 	}
 	return proto.Marshal(chatPacket)
+}
+
+// AckChatMessage constructs a chat message acknowledgement.
+func (mb *MessageBuilder) AckChatMessage(messageID int32) ([]byte, error) {
+	cr := &Protocol_Data_Chat.ChatAcknowledge{
+		MessageId: proto.Uint32(uint32(messageID)),
+		Accepted:  proto.Bool(true),
+	}
+	pc := &Protocol_Data_Chat.Packet{
+		ChatAcknowledge: cr,
+	}
+	return proto.Marshal(pc)
 }
