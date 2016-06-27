@@ -1,4 +1,4 @@
-package goricochet
+package utils
 
 import (
 	"errors"
@@ -43,5 +43,6 @@ func (nr *NetworkResolver) Resolve(hostname string) (net.Conn, string, error) {
 	if err != nil {
 		return nil, "", errors.New("Cannot Dial Remote Ricochet Address")
 	}
+	//conn.SetDeadline(time.Now().Add(5 * time.Second))
 	return conn, resolvedHostname, nil
 }

@@ -1,16 +1,35 @@
 package goricochet
 
+// RicochetService provides an interface for building automated ricochet applications.
 type RicochetService interface {
-	OnConnect(serverHostname string)
-	OnAuthenticationChallenge(channelID int32, serverHostname string, serverCookie [16]byte)
-	OnAuthenticationResult(channelID int32, serverHostname string, result bool)
+	OnReady()
+	OnConnect(oc *OpenConnection)
 
-	OnOpenChannelRequest(channelID int32, serverHostname string)
-	OnOpenChannelRequestAck(channelID int32, serverHostname string, result bool)
-	OnChannelClose(channelID int32, serverHostname string)
+	// Authentication Management
+	OnAuthenticationRequest(oc *OpenConnection, channelID int32, clientCookie [16]byte)
+	OnAuthenticationChallenge(oc *OpenConnection, channelID int32, serverCookie [16]byte)
+	OnAuthenticationProof(oc *OpenConnection, channelID int32, publicKey []byte, signature []byte, isKnownContact bool)
+	OnAuthenticationResult(oc *OpenConnection, channelID int32, result bool, isKnownContact bool)
 
-	OnContactRequest(channelID string, serverHostname string, nick string, message string)
+	// Contact Management
+	IsKnownContact(hostname string) bool
+	OnContactRequest(oc *OpenConnection, channelID int32, nick string, message string)
+	OnContactRequestAck(oc *OpenConnection, channelID int32, status string)
 
-	OnChatMessage(channelID int32, serverHostname string, messageID int32, message string)
-	OnChatMessageAck(channelID int32, serverHostname string, messageID int32)
+	// Managing Channels
+	OnOpenChannelRequest(oc *OpenConnection, channelID int32, channelType string)
+	OnOpenChannelRequestSuccess(oc *OpenConnection, channelID int32)
+	OnChannelClosed(oc *OpenConnection, channelID int32)
+
+	// Chat Messages
+	OnChatMessage(oc *OpenConnection, channelID int32, messageID int32, message string)
+	OnChatMessageAck(oc *OpenConnection, channelID int32, messageID int32)
+
+	// Handle Errors
+	OnFailedChannelOpen(oc *OpenConnection, channelID int32, errorType string)
+	OnGenericError(oc *OpenConnection, channelID int32)
+	OnUnknownTypeError(oc *OpenConnection, channelID int32)
+	OnUnauthorizedError(oc *OpenConnection, channelID int32)
+	OnBadUsageError(oc *OpenConnection, channelID int32)
+	OnFailedError(oc *OpenConnection, channelID int32)
 }

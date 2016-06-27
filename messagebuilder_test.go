@@ -4,7 +4,7 @@ import "testing"
 
 func TestOpenChatChannel(t *testing.T) {
 	messageBuilder := new(MessageBuilder)
-	_, err := messageBuilder.OpenChatChannel(1)
+	_, err := messageBuilder.OpenChannel(1, "im.ricochet.chat")
 	if err != nil {
 		t.Errorf("Error building open chat channel message: %s", err)
 	}
@@ -31,7 +31,7 @@ func TestOpenAuthenticationChannel(t *testing.T) {
 
 func TestChatMessage(t *testing.T) {
 	messageBuilder := new(MessageBuilder)
-	_, err := messageBuilder.ChatMessage("Hello World")
+	_, err := messageBuilder.ChatMessage("Hello World", 0)
 	if err != nil {
 		t.Errorf("Error building chat message: %s", err)
 	}

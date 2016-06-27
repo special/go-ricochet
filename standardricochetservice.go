@@ -1,89 +1,178 @@
 package goricochet
 
 import (
-	"crypto"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/asn1"
-	//"encoding/binary"
 	"encoding/pem"
+	"errors"
+	"github.com/s-rah/go-ricochet/utils"
 	"io/ioutil"
+	"log"
 )
 
+// StandardRicochetService implements all the necessary flows to implement a
+// minimal, protocol compliant Ricochet Service. It can be built on by other
+// applications to produce automated riochet applications.
 type StandardRicochetService struct {
-	ricochet    *Ricochet
-	authHandler map[string]*AuthenticationHandler
-	privateKey  *rsa.PrivateKey
-	hostname    string
+	ricochet       *Ricochet
+	privateKey     *rsa.PrivateKey
+	serverHostname string
 }
 
-func (srs *StandardRicochetService) Init(filename string, hostname string) {
+// Init initializes a StandardRicochetService with the cryptographic key given
+// by filename.
+func (srs *StandardRicochetService) Init(filename string) error {
 	srs.ricochet = new(Ricochet)
-	srs.ricochet.Init(true)
-	srs.authHandler = make(map[string]*AuthenticationHandler)
-	srs.hostname = hostname
+	srs.ricochet.Init()
 
 	pemData, err := ioutil.ReadFile(filename)
 
 	if err != nil {
-		// 	    r.logger.Print("Error Reading Private Key: ", err)
+		return errors.New("Could not setup ricochet service: could not read private key")
 	}
 
 	block, _ := pem.Decode(pemData)
 	if block == nil || block.Type != "RSA PRIVATE KEY" {
-		//		r.logger.Print("No valid PEM data found")
+		return errors.New("Could not setup ricochet service: no valid PEM data found")
 	}
 
-	srs.privateKey, _ = x509.ParsePKCS1PrivateKey(block.Bytes)
+	srs.privateKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		return errors.New("Could not setup ricochet service: could not parse private key")
+	}
+
+	publicKeyBytes, _ := asn1.Marshal(rsa.PublicKey{
+		N: srs.privateKey.PublicKey.N,
+		E: srs.privateKey.PublicKey.E,
+	})
+
+	srs.serverHostname = utils.GetTorHostname(publicKeyBytes)
+	log.Printf("Initialised ricochet service for %s", srs.serverHostname)
+
+	return nil
 }
 
-func (srs *StandardRicochetService) OnConnect(serverHostname string) {
-	srs.authHandler[serverHostname] = new(AuthenticationHandler)
-	clientCookie := srs.authHandler[serverHostname].GenClientCookie()
-	srs.ricochet.Authenticate(1, clientCookie)
+// OnReady is called once a Server has been established (by calling Listen)
+func (srs *StandardRicochetService) OnReady() {
+}
+
+// Listen starts the ricochet service. Listen must be called before any other method (apart from Init)
+func (srs *StandardRicochetService) Listen(service RicochetService, port int) {
+	srs.ricochet.Server(service, port)
+}
+
+// Connect can be called to initiate a new client connection to a server
+func (srs *StandardRicochetService) Connect(hostname string) error {
+	log.Printf("Connecting to...%s", hostname)
+	oc, err := srs.ricochet.Connect(hostname)
+	if err != nil {
+		return errors.New("Could not connect to: " + hostname)
+	}
+	oc.MyHostname = srs.serverHostname
+	return nil
+}
+
+// OnConnect is called when a client or server sucessfully passes Version Negotiation.
+func (srs *StandardRicochetService) OnConnect(oc *OpenConnection) {
+	if oc.Client {
+		log.Printf("Sucessefully Connected to %s", oc.OtherHostname)
+		oc.IsAuthed = true // Connections to Servers are Considered Authenticated by Default
+		oc.Authenticate(1)
+	} else {
+		oc.MyHostname = srs.serverHostname
+	}
+}
+
+// OnAuthenticationRequest is called when a client requests Authentication
+func (srs *StandardRicochetService) OnAuthenticationRequest(oc *OpenConnection, channelID int32, clientCookie [16]byte) {
+	oc.ConfirmAuthChannel(channelID, clientCookie)
 }
 
 // OnAuthenticationChallenge constructs a valid authentication challenge to the serverCookie
-func (srs *StandardRicochetService) OnAuthenticationChallenge(channelID int32, serverHostname string, serverCookie [16]byte) {
-	srs.authHandler[serverHostname].AddServerCookie(serverCookie[:])
-
+func (srs *StandardRicochetService) OnAuthenticationChallenge(oc *OpenConnection, channelID int32, serverCookie [16]byte) {
 	// DER Encode the Public Key
 	publickeyBytes, _ := asn1.Marshal(rsa.PublicKey{
 		N: srs.privateKey.PublicKey.N,
 		E: srs.privateKey.PublicKey.E,
 	})
-
-	signature, _ := rsa.SignPKCS1v15(nil, srs.privateKey, crypto.SHA256, srs.authHandler[serverHostname].GenChallenge(srs.hostname, serverHostname))
-	// TODO Handle Errors
-	signatureBytes := make([]byte, 128)
-	copy(signatureBytes[:], signature[:])
-	srs.ricochet.SendProof(1, publickeyBytes, signatureBytes)
+	oc.SendProof(1, serverCookie, publickeyBytes, srs.privateKey)
 }
 
-func (srs *StandardRicochetService) Ricochet() *Ricochet {
-	return srs.ricochet
+// OnAuthenticationProof is called when a client sends Proof for an existing authentication challenge
+func (srs *StandardRicochetService) OnAuthenticationProof(oc *OpenConnection, channelID int32, publicKey []byte, signature []byte, isKnownContact bool) {
+	result := oc.ValidateProof(channelID, publicKey, signature)
+	oc.SendAuthenticationResult(channelID, result, isKnownContact)
+	oc.IsAuthed = result
+	oc.CloseChannel(channelID)
 }
 
-func (srs *StandardRicochetService) OnAuthenticationResult(channelID int32, serverHostname string, result bool) {
-
+// OnAuthenticationResult is called once a server has returned the result of the Proof Verification
+func (srs *StandardRicochetService) OnAuthenticationResult(oc *OpenConnection, channelID int32, result bool, isKnownContact bool) {
+	oc.IsAuthed = result
 }
 
-func (srs *StandardRicochetService) OnOpenChannelRequest(channelID int32, serverHostname string) {
-	srs.ricochet.AckOpenChannel(channelID, true)
+// IsKnownContact allows a caller to determine if a hostname an authorized contact.
+func (srs *StandardRicochetService) IsKnownContact(hostname string) bool {
+	return false
 }
 
-func (srs *StandardRicochetService) OnOpenChannelRequestAck(channelID int32, serverHostname string, result bool) {
+// OnContactRequest is called when a client sends a new contact request
+func (srs *StandardRicochetService) OnContactRequest(oc *OpenConnection, channelID int32, nick string, message string) {
 }
 
-func (srs *StandardRicochetService) OnChannelClose(channelID int32, serverHostname string) {
+// OnContactRequestAck is called when a server sends a reply to an existing contact request
+func (srs *StandardRicochetService) OnContactRequestAck(oc *OpenConnection, channelID int32, status string) {
 }
 
-func (srs *StandardRicochetService) OnContactRequest(channelID string, serverHostname string, nick string, message string) {
+// OnOpenChannelRequest is called when a client or server requests to open a new channel
+func (srs *StandardRicochetService) OnOpenChannelRequest(oc *OpenConnection, channelID int32, channelType string) {
+	oc.AckOpenChannel(channelID, channelType)
 }
 
-func (srs *StandardRicochetService) OnChatMessage(channelID int32, serverHostname string, messageId int32, message string) {
-	srs.ricochet.AckChatMessage(channelID, messageId)
+// OnOpenChannelRequestSuccess is called when a client or server responds to an open channel request
+func (srs *StandardRicochetService) OnOpenChannelRequestSuccess(oc *OpenConnection, channelID int32) {
 }
 
-func (srs *StandardRicochetService) OnChatMessageAck(channelID int32, serverHostname string, messageId int32) {
+// OnChannelClose is called when a client or server closes an existing channel
+func (srs *StandardRicochetService) OnChannelClosed(oc *OpenConnection, channelID int32) {
+}
+
+// OnChatMessage is called when a new chat message is received.
+func (srs *StandardRicochetService) OnChatMessage(oc *OpenConnection, channelID int32, messageID int32, message string) {
+	oc.AckChatMessage(channelID, messageID)
+}
+
+// OnChatMessageAck is called when a new chat message is ascknowledged.
+func (srs *StandardRicochetService) OnChatMessageAck(oc *OpenConnection, channelID int32, messageID int32) {
+}
+
+// OnFailedChannelOpen is called when a server fails to open a channel
+func (srs *StandardRicochetService) OnFailedChannelOpen(oc *OpenConnection, channelID int32, errorType string) {
+	oc.UnsetChannel(channelID)
+}
+
+// OnGenericError is called when a generalized error is returned from the peer
+func (srs *StandardRicochetService) OnGenericError(oc *OpenConnection, channelID int32) {
+	oc.RejectOpenChannel(channelID, "GenericError")
+}
+
+//OnUnknownTypeError is called when an unknown type error is returned from the peer
+func (srs *StandardRicochetService) OnUnknownTypeError(oc *OpenConnection, channelID int32) {
+	oc.RejectOpenChannel(channelID, "UnknownTypeError")
+}
+
+// OnUnauthorizedError is called when an unathorized error is returned from the peer
+func (srs *StandardRicochetService) OnUnauthorizedError(oc *OpenConnection, channelID int32) {
+	oc.RejectOpenChannel(channelID, "UnauthorizedError")
+}
+
+// OnBadUsageError is called when a bad usage error is returned from the peer
+func (srs *StandardRicochetService) OnBadUsageError(oc *OpenConnection, channelID int32) {
+	oc.RejectOpenChannel(channelID, "BadUsageError")
+}
+
+// OnFailedError is called when a failed error is returned from the peer
+func (srs *StandardRicochetService) OnFailedError(oc *OpenConnection, channelID int32) {
+	oc.RejectOpenChannel(channelID, "FailedError")
 }

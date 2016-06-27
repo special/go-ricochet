@@ -7,7 +7,7 @@ import (
 	"io"
 )
 
-// AuthenticationHandler manages the stae required for the AuthHiddenService
+// AuthenticationHandler manages the state required for the AuthHiddenService
 // authentication scheme for ricochet.
 type AuthenticationHandler struct {
 	clientCookie [16]byte
