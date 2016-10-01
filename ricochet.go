@@ -101,6 +101,8 @@ func (r *Ricochet) ProcessMessages(service RicochetService) {
 // to process them.
 func (r *Ricochet) processConnection(oc *OpenConnection, service RicochetService) {
 	service.OnConnect(oc)
+	defer service.OnDisconnect(oc)
+
 	for {
 		if oc.Closed {
 			return
