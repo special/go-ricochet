@@ -154,8 +154,8 @@ func (oc *OpenConnection) ValidateProof(channel int32, publicKeyBytes []byte, si
 	challenge := oc.authHandler[channel].GenChallenge(provisionalHostname, oc.MyHostname)
 	err = rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, challenge[:], signature)
 	if err == nil {
+		oc.OtherHostname = provisionalHostname
 		return true
-
 	}
 	return false
 
