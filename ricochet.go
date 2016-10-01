@@ -39,6 +39,10 @@ func (r *Ricochet) Connect(host string) (*OpenConnection, error) {
 		return nil, err
 	}
 
+	return r.ConnectOpen(conn, host)
+}
+
+func (r *Ricochet) ConnectOpen(conn net.Conn, host string) (*OpenConnection, error) {
 	oc, err := r.negotiateVersion(conn, true)
 	if err != nil {
 		return nil, err
@@ -56,6 +60,10 @@ func (r *Ricochet) Server(service RicochetService, port int) {
 		return
 	}
 
+	r.ServeListener(service, ln)
+}
+
+func (r *Ricochet) ServeListener(service RicochetService, ln net.Listener) {
 	go r.ProcessMessages(service)
 	service.OnReady()
 	for {
