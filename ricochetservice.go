@@ -4,6 +4,7 @@ package goricochet
 type RicochetService interface {
 	OnReady()
 	OnConnect(oc *OpenConnection)
+	OnDisconnect(oc *OpenConnection)
 
 	// Authentication Management
 	OnAuthenticationRequest(oc *OpenConnection, channelID int32, clientCookie [16]byte)

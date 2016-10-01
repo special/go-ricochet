@@ -84,6 +84,10 @@ func (srs *StandardRicochetService) OnConnect(oc *OpenConnection) {
 	}
 }
 
+// OnDisconnect is called when a connection is closed
+func (srs *StandardRicochetService) OnDisconnect(oc *OpenConnection) {
+}
+
 // OnAuthenticationRequest is called when a client requests Authentication
 func (srs *StandardRicochetService) OnAuthenticationRequest(oc *OpenConnection, channelID int32, clientCookie [16]byte) {
 	oc.ConfirmAuthChannel(channelID, clientCookie)
