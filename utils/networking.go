@@ -1,10 +1,10 @@
 package utils
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
-	"net"
-	"strconv"
+	"io"
 )
 
 // RicochetData is a structure containing the raw data and the channel it the
@@ -14,79 +14,67 @@ type RicochetData struct {
 	Data    []byte
 }
 
+func (rd RicochetData) Equals(other RicochetData) bool {
+	return rd.Channel == other.Channel && bytes.Equal(rd.Data, other.Data)
+}
+
 // RicochetNetworkInterface abstract operations that interact with ricochet's
 // packet layer.
 type RicochetNetworkInterface interface {
-	Recv(conn net.Conn) ([]byte, error)
-	SendRicochetPacket(conn net.Conn, channel int32, data []byte)
-	RecvRicochetPackets(conn net.Conn) ([]RicochetData, error)
+	SendRicochetPacket(dst io.Writer, channel int32, data []byte) error
+	RecvRicochetPacket(reader io.Reader) (RicochetData, error)
 }
 
 // RicochetNetwork is a concrete implementation of the RicochetNetworkInterface
 type RicochetNetwork struct {
 }
 
-// Recv reads data from the client, and returns the raw byte array, else error.
-func (rn *RicochetNetwork) Recv(conn net.Conn) ([]byte, error) {
-	buf := make([]byte, 4096)
-	n, err := conn.Read(buf)
-	if err != nil {
-		return nil, err
-	}
-	ret := make([]byte, n)
-	copy(ret[:], buf[:])
-	return ret, nil
-}
-
 // SendRicochetPacket places the data into a structure needed for the client to
 // decode the packet and writes the packet to the network.
-func (rn *RicochetNetwork) SendRicochetPacket(conn net.Conn, channel int32, data []byte) {
-	header := make([]byte, 4+len(data))
-	header[0] = byte(len(header) >> 8)
-	header[1] = byte(len(header) & 0x00FF)
-	header[2] = 0x00
-	header[3] = byte(channel)
-	copy(header[4:], data[:])
-	conn.Write(header)
+func (rn *RicochetNetwork) SendRicochetPacket(dst io.Writer, channel int32, data []byte) error {
+	packet := make([]byte, 4+len(data))
+	if len(packet) > 65535 {
+		return errors.New("packet too large")
+	}
+	binary.BigEndian.PutUint16(packet[0:2], uint16(len(packet)))
+	if channel < 0 || channel > 65535 {
+		return errors.New("invalid channel ID")
+	}
+	binary.BigEndian.PutUint16(packet[2:4], uint16(channel))
+	copy(packet[4:], data[:])
+
+	for pos := 0; pos < len(packet); {
+		n, err := dst.Write(packet[pos:])
+		if err != nil {
+			return err
+		}
+		pos += n
+	}
+	return nil
 }
 
-// RecvRicochetPackets returns an array of new messages received from the ricochet client
-func (rn *RicochetNetwork) RecvRicochetPackets(conn net.Conn) ([]RicochetData, error) {
-	buf, err := rn.Recv(conn)
-	if err != nil && len(buf) < 4 {
-		return nil, errors.New("failed to retrieve new messages from the client")
+// RecvRicochetPacket returns the next packet from reader as a RicochetData
+// structure, or an error.
+func (rn *RicochetNetwork) RecvRicochetPacket(reader io.Reader) (RicochetData, error) {
+	packet := RicochetData{}
+
+	// Read the four-byte header to get packet length
+	header := make([]byte, 4)
+	if _, err := io.ReadAtLeast(reader, header, len(header)); err != nil {
+		return packet, err
 	}
 
-	pos := 0
-	finished := false
-	var datas []RicochetData
-
-	for !finished {
-		size := int(binary.BigEndian.Uint16(buf[pos+0 : pos+2]))
-		channel := int(binary.BigEndian.Uint16(buf[pos+2 : pos+4]))
-
-		if size < 4 {
-			return datas, errors.New("invalid ricochet packet received (size=" + strconv.Itoa(size) + ")")
-		}
-
-		if pos+size > len(buf) {
-			return datas, errors.New("partial data packet received")
-		}
-
-		data := RicochetData{}
-		data.Channel = int32(channel)
-
-		if pos+4 >= len(buf) {
-			data.Data = make([]byte, 0)
-		} else {
-			data.Data = buf[pos+4 : pos+size]
-		}
-
-		datas = append(datas, data)
-		pos += size
-		if pos >= len(buf) {
-			finished = true
-		}
+	size := int(binary.BigEndian.Uint16(header[0:2]))
+	if size < 4 {
+		return packet, errors.New("invalid packet length")
 	}
-	return datas, nil
+
+	packet.Channel = int32(binary.BigEndian.Uint16(header[2:4]))
+	packet.Data = make([]byte, size-4)
+
+	if _, err := io.ReadAtLeast(reader, packet.Data, len(packet.Data)); err != nil {
+		return packet, err
+	}
+
+	return packet, nil
 }
