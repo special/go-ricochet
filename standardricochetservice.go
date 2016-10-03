@@ -67,7 +67,7 @@ func (srs *StandardRicochetService) Connect(hostname string) error {
 	log.Printf("Connecting to...%s", hostname)
 	oc, err := srs.ricochet.Connect(hostname)
 	if err != nil {
-		return errors.New("Could not connect to: " + hostname)
+		return errors.New("Could not connect to: " + hostname + " " + err.Error())
 	}
 	oc.MyHostname = srs.serverHostname
 	return nil

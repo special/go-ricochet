@@ -2,7 +2,7 @@ package utils
 
 import (
 	"errors"
-	"h12.me/socks"
+	"golang.org/x/net/proxy"
 	"net"
 	"strings"
 )
@@ -38,8 +38,12 @@ func (nr *NetworkResolver) Resolve(hostname string) (net.Conn, string, error) {
 		resolvedHostname = addrParts[1]
 	}
 
-	dialSocksProxy := socks.DialSocksProxy(socks.SOCKS5, "127.0.0.1:9050")
-	conn, err := dialSocksProxy("", resolvedHostname+".onion:9878")
+	torDialer, err := proxy.SOCKS5("tcp", "127.0.0.1:9050", nil, proxy.Direct)
+	if err != nil {
+		return nil,"", err
+	}
+
+	conn, err := torDialer.Dial("tcp", resolvedHostname+".onion:9878")
 	if err != nil {
 		return nil, "", errors.New("Cannot Dial Remote Ricochet Address")
 	}

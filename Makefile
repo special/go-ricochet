@@ -1,5 +1,5 @@
 all:
-	go install github.com/go-ricochet
+	go install github.com/s-rah/go-ricochet
 
 test:
 	go test -v github.com/s-rah/go-ricochet/...
