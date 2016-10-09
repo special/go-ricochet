@@ -11,27 +11,36 @@ type EchoBotService struct {
 	goricochet.StandardRicochetService
 }
 
+func (ebs *EchoBotService) OnNewConnection(oc *goricochet.OpenConnection) {
+	ebs.StandardRicochetService.OnNewConnection(oc)
+	go oc.Process(&EchoBotConnection{})
+}
+
+type EchoBotConnection struct {
+	goricochet.StandardRicochetConnection
+}
+
 // IsKnownContact is configured to always accept Contact Requests
-func (ebs *EchoBotService) IsKnownContact(hostname string) bool {
+func (ebc *EchoBotConnection) IsKnownContact(hostname string) bool {
 	return true
 }
 
 // OnContactRequest - we always accept new contact request.
-func (ebs *EchoBotService) OnContactRequest(oc *goricochet.OpenConnection, channelID int32, nick string, message string) {
-	ts.StandardRicochetService.OnContactRequest(oc, channelID, nick, message)
-	oc.AckContactRequestOnResponse(channelID, "Accepted")
-	oc.CloseChannel(channelID)
+func (ebc *EchoBotConnection) OnContactRequest(channelID int32, nick string, message string) {
+	ebc.StandardRicochetConnection.OnContactRequest(channelID, nick, message)
+	ebc.Conn.AckContactRequestOnResponse(channelID, "Accepted")
+	ebc.Conn.CloseChannel(channelID)
 }
 
 // OnChatMessage we acknowledge the message, grab the message content and send it back - opening
 // a new channel if necessary.
-func (ebs *EchoBotService) OnChatMessage(oc *goricochet.OpenConnection, channelID int32, messageID int32, message string) {
-	log.Printf("Received Message from %s: %s", oc.OtherHostname, message)
-	oc.AckChatMessage(channelID, messageID)
-	if oc.GetChannelType(6) == "none" {
-		oc.OpenChatChannel(6)
+func (ebc *EchoBotConnection) OnChatMessage(channelID int32, messageID int32, message string) {
+	log.Printf("Received Message from %s: %s", ebc.Conn.OtherHostname, message)
+	ebc.Conn.AckChatMessage(channelID, messageID)
+	if ebc.Conn.GetChannelType(6) == "none" {
+		ebc.Conn.OpenChatChannel(6)
 	}
-	oc.SendMessage(6, message)
+	ebc.Conn.SendMessage(6, message)
 }
 
 func main() {
