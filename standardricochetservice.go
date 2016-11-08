@@ -73,7 +73,7 @@ func (srs *StandardRicochetService) Connect(hostname string) error {
 	return nil
 }
 
-// OnConnect is called when a client or server sucessfully passes Version Negotiation.
+// OnConnect is called when a client or server successfully passes Version Negotiation.
 func (srs *StandardRicochetService) OnConnect(oc *OpenConnection) {
 	if oc.Client {
 		log.Printf("Sucessefully Connected to %s", oc.OtherHostname)

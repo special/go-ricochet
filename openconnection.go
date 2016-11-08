@@ -26,7 +26,7 @@ type OpenConnection struct {
 	Closed        bool
 }
 
-// Init intializes a OpenConnection object to a default state.
+// Init initializes a OpenConnection object to a default state.
 func (oc *OpenConnection) Init(outbound bool, conn net.Conn) {
 	oc.conn = conn
 	oc.authHandler = make(map[int32]*AuthenticationHandler)
