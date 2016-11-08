@@ -1,4 +1,4 @@
-# GoRicochet [![Build Status](https://travis-ci.org/s-rah/go-ricochet.svg?branch=master)](https://travis-ci.org/s-rah/go-ricochet)
+# GoRicochet [![Build Status](https://travis-ci.org/s-rah/go-ricochet.svg?branch=master)](https://travis-ci.org/s-rah/go-ricochet) [![Go Report Card](https://goreportcard.com/badge/github.com/s-rah/go-ricochet)](https://goreportcard.com/report/github.com/s-rah/go-ricochet)
 
 ![GoRicochet](logo.png)
 
