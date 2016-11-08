@@ -3,3 +3,19 @@ go:
   - 1.7
   - tip
 sudo: true
+notifications:
+   email:
+     recipients:
+       - me@sarahjamielewis.com
+
+install:
+    - go get golang.org/x/tools/cmd/cover
+    - go get github.com/mattn/goveralls
+    - go get golang.org/x/net/proxy
+    - go get github.com/golang/protobuf/proto
+
+script:
+
+    - cd $TRAVIS_BUILD_DIR && ./tests.sh
+    - test -z "$GOFMT"
+    - goveralls -coverprofile=./coverage.out -service travis-ci
