@@ -35,9 +35,9 @@ func TestSendRicochetPacket(t *testing.T) {
 func TestSendRicochetPacket_Invalid(t *testing.T) {
 	rni := RicochetNetwork{}
 	invalidPackets := []RicochetData{
-		RicochetData{-1, []byte{}},
-		RicochetData{65536, []byte{}},
-		RicochetData{0, make([]byte, 65532)},
+		{-1, []byte{}},
+		{65536, []byte{}},
+		{0, make([]byte, 65532)},
 	}
 
 	for _, td := range invalidPackets {
@@ -87,11 +87,11 @@ func TestRecvRicochetPacket(t *testing.T) {
 func TestRecvRicochetPacket_Invalid(t *testing.T) {
 	rni := RicochetNetwork{}
 	invalidPackets := [][]byte{
-		[]byte{0x00, 0x00, 0x00, 0x00},
-		[]byte{0x00, 0x03, 0x00, 0x00},
-		[]byte{0xff},
-		[]byte{0x00, 0x06, 0x00, 0x00, 0x00},
-		[]byte{},
+		{0x00, 0x00, 0x00, 0x00},
+		{0x00, 0x03, 0x00, 0x00},
+		{0xff},
+		{0x00, 0x06, 0x00, 0x00, 0x00},
+		{},
 	}
 
 	for _, td := range invalidPackets {
