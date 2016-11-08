@@ -93,8 +93,17 @@ func (r *Ricochet) processNewConnection(conn net.Conn, service RicochetService) 
 func (r *Ricochet) ProcessMessages(service RicochetService) {
 	for {
 		oc := <-r.newconns
+		if oc == nil {
+			return
+		}
 		go r.processConnection(oc, service)
 	}
+}
+
+// Request that the ProcessMessages loop is stopped after handling all currently
+// queued new connections.
+func (r *Ricochet) RequestStopMessageLoop() {
+	r.newconns <- nil
 }
 
 // ProcessConnection starts a blocking process loop which continually waits for

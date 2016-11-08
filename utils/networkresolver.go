@@ -40,7 +40,7 @@ func (nr *NetworkResolver) Resolve(hostname string) (net.Conn, string, error) {
 
 	torDialer, err := proxy.SOCKS5("tcp", "127.0.0.1:9050", nil, proxy.Direct)
 	if err != nil {
-		return nil,"", err
+		return nil, "", err
 	}
 
 	conn, err := torDialer.Dial("tcp", resolvedHostname+".onion:9878")
