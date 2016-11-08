@@ -5,24 +5,29 @@ import (
 	"log"
 )
 
+// EchoBotService is an example service which simply echoes back what a client
+// sends it.
 type EchoBotService struct {
 	goricochet.StandardRicochetService
 }
 
-// Always Accept Contact Requests
-func (ts *EchoBotService) IsKnownContact(hostname string) bool {
+// IsKnownContact is configured to always accept Contact Requests
+func (ebs *EchoBotService) IsKnownContact(hostname string) bool {
 	return true
 }
 
-func (ts *EchoBotService) OnContactRequest(oc *goricochet.OpenConnection, channelID int32, nick string, message string) {
+// OnContactRequest - we always accept new contact request.
+func (ebs *EchoBotService) OnContactRequest(oc *goricochet.OpenConnection, channelID int32, nick string, message string) {
 	ts.StandardRicochetService.OnContactRequest(oc, channelID, nick, message)
 	oc.AckContactRequestOnResponse(channelID, "Accepted")
 	oc.CloseChannel(channelID)
 }
 
-func (ebs *EchoBotService) OnChatMessage(oc *goricochet.OpenConnection, channelID int32, messageId int32, message string) {
+// OnChatMessage we acknowledge the message, grab the message content and send it back - opening
+// a new channel if necessary.
+func (ebs *EchoBotService) OnChatMessage(oc *goricochet.OpenConnection, channelID int32, messageID int32, message string) {
 	log.Printf("Received Message from %s: %s", oc.OtherHostname, message)
-	oc.AckChatMessage(channelID, messageId)
+	oc.AckChatMessage(channelID, messageID)
 	if oc.GetChannelType(6) == "none" {
 		oc.OpenChatChannel(6)
 	}
