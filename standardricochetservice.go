@@ -138,7 +138,7 @@ func (srs *StandardRicochetService) OnOpenChannelRequest(oc *OpenConnection, cha
 func (srs *StandardRicochetService) OnOpenChannelRequestSuccess(oc *OpenConnection, channelID int32) {
 }
 
-// OnChannelClose is called when a client or server closes an existing channel
+// OnChannelClosed is called when a client or server closes an existing channel
 func (srs *StandardRicochetService) OnChannelClosed(oc *OpenConnection, channelID int32) {
 }
 

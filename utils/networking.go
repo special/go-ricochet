@@ -14,6 +14,8 @@ type RicochetData struct {
 	Data    []byte
 }
 
+//Equals compares a RicochetData object to another and returns true if contain
+// the same data.
 func (rd RicochetData) Equals(other RicochetData) bool {
 	return rd.Channel == other.Channel && bytes.Equal(rd.Data, other.Data)
 }

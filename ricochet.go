@@ -43,6 +43,8 @@ func (r *Ricochet) Connect(host string) (*OpenConnection, error) {
 	return r.ConnectOpen(conn, host)
 }
 
+// ConnectOpen attempts to open up a new connection to the given host. Returns a
+// pointer to the OpenConnection or an error.
 func (r *Ricochet) ConnectOpen(conn net.Conn, host string) (*OpenConnection, error) {
 	oc, err := r.negotiateVersion(conn, true)
 	if err != nil {
@@ -64,6 +66,8 @@ func (r *Ricochet) Server(service RicochetService, port int) {
 	r.ServeListener(service, ln)
 }
 
+// ServeListener processes all messages given by the listener ln with the given
+// RicochetService, service.
 func (r *Ricochet) ServeListener(service RicochetService, ln net.Listener) {
 	go r.ProcessMessages(service)
 	service.OnReady()
@@ -100,7 +104,7 @@ func (r *Ricochet) ProcessMessages(service RicochetService) {
 	}
 }
 
-// Request that the ProcessMessages loop is stopped after handling all currently
+// RequestStopMessageLoop requests that the ProcessMessages loop is stopped after handling all currently
 // queued new connections.
 func (r *Ricochet) RequestStopMessageLoop() {
 	r.newconns <- nil
