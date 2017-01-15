@@ -4,7 +4,13 @@ import (
 	"crypto"
 	"crypto/rsa"
 	"encoding/asn1"
+	"github.com/golang/protobuf/proto"
+	"github.com/s-rah/go-ricochet/auth"
+	"github.com/s-rah/go-ricochet/chat"
+	"github.com/s-rah/go-ricochet/contact"
+	"github.com/s-rah/go-ricochet/control"
 	"github.com/s-rah/go-ricochet/utils"
+	"log"
 	"net"
 )
 
@@ -297,4 +303,232 @@ func (oc *OpenConnection) SendMessage(channel int32, message string) {
 	data, err := messageBuilder.ChatMessage(message, 0)
 	utils.CheckError(err)
 	oc.rni.SendRicochetPacket(oc.conn, channel, data)
+}
+
+// Process waits for new messages to arrive from the connection and uses the given
+// ConnectionHandler to process them.
+func (oc *OpenConnection) Process(handler ConnectionHandler) {
+	handler.OnReady(oc)
+	defer oc.Close()
+	defer handler.OnDisconnect()
+
+	for {
+		if oc.Closed {
+			return
+		}
+
+		packet, err := oc.rni.RecvRicochetPacket(oc.conn)
+		if err != nil {
+			oc.Close()
+			return
+		}
+
+		if len(packet.Data) == 0 {
+			handler.OnChannelClosed(packet.Channel)
+			continue
+		}
+
+		if packet.Channel == 0 {
+
+			res := new(Protocol_Data_Control.Packet)
+			err := proto.Unmarshal(packet.Data[:], res)
+
+			if err != nil {
+				handler.OnGenericError(packet.Channel)
+				continue
+			}
+
+			if res.GetOpenChannel() != nil {
+				opm := res.GetOpenChannel()
+
+				if oc.GetChannelType(opm.GetChannelIdentifier()) != "none" {
+					// Channel is already in use.
+					handler.OnBadUsageError(opm.GetChannelIdentifier())
+					continue
+				}
+
+				// If I am a Client, the server can only open even numbered channels
+				if oc.Client && opm.GetChannelIdentifier()%2 != 0 {
+					handler.OnBadUsageError(opm.GetChannelIdentifier())
+					continue
+				}
+
+				// If I am a Server, the client can only open odd numbered channels
+				if !oc.Client && opm.GetChannelIdentifier()%2 != 1 {
+					handler.OnBadUsageError(opm.GetChannelIdentifier())
+					continue
+				}
+
+				switch opm.GetChannelType() {
+				case "im.ricochet.auth.hidden-service":
+					if oc.Client {
+						// Servers are authed by default and can't auth with hidden-service
+						handler.OnBadUsageError(opm.GetChannelIdentifier())
+					} else if oc.IsAuthed {
+						// Can't auth if already authed
+						handler.OnBadUsageError(opm.GetChannelIdentifier())
+					} else if oc.HasChannel("im.ricochet.auth.hidden-service") {
+						// Can't open more than 1 auth channel
+						handler.OnBadUsageError(opm.GetChannelIdentifier())
+					} else {
+						clientCookie, err := proto.GetExtension(opm, Protocol_Data_AuthHiddenService.E_ClientCookie)
+						if err == nil {
+							clientCookieB := [16]byte{}
+							copy(clientCookieB[:], clientCookie.([]byte)[:])
+							handler.OnAuthenticationRequest(opm.GetChannelIdentifier(), clientCookieB)
+						} else {
+							// Must include Client Cookie
+							handler.OnBadUsageError(opm.GetChannelIdentifier())
+						}
+					}
+				case "im.ricochet.chat":
+					if !oc.IsAuthed {
+						// Can't open chat channel if not authorized
+						handler.OnUnauthorizedError(opm.GetChannelIdentifier())
+					} else if !handler.IsKnownContact(oc.OtherHostname) {
+						// Can't open chat channel if not a known contact
+						handler.OnUnauthorizedError(opm.GetChannelIdentifier())
+					} else {
+						handler.OnOpenChannelRequest(opm.GetChannelIdentifier(), "im.ricochet.chat")
+					}
+				case "im.ricochet.contact.request":
+					if oc.Client {
+						// Servers are not allowed to send contact requests
+						handler.OnBadUsageError(opm.GetChannelIdentifier())
+					} else if !oc.IsAuthed {
+						// Can't open a contact channel if not authed
+						handler.OnUnauthorizedError(opm.GetChannelIdentifier())
+					} else if oc.HasChannel("im.ricochet.contact.request") {
+						// Only 1 contact channel is allowed to be open at a time
+						handler.OnBadUsageError(opm.GetChannelIdentifier())
+					} else {
+						contactRequestI, err := proto.GetExtension(opm, Protocol_Data_ContactRequest.E_ContactRequest)
+						if err == nil {
+							contactRequest, check := contactRequestI.(*Protocol_Data_ContactRequest.ContactRequest)
+							if check {
+								handler.OnContactRequest(opm.GetChannelIdentifier(), contactRequest.GetNickname(), contactRequest.GetMessageText())
+								break
+							}
+						}
+						handler.OnBadUsageError(opm.GetChannelIdentifier())
+					}
+				default:
+					handler.OnUnknownTypeError(opm.GetChannelIdentifier())
+				}
+			} else if res.GetChannelResult() != nil {
+				crm := res.GetChannelResult()
+				if crm.GetOpened() {
+					switch oc.GetChannelType(crm.GetChannelIdentifier()) {
+					case "im.ricochet.auth.hidden-service":
+						serverCookie, err := proto.GetExtension(crm, Protocol_Data_AuthHiddenService.E_ServerCookie)
+						if err == nil {
+							serverCookieB := [16]byte{}
+							copy(serverCookieB[:], serverCookie.([]byte)[:])
+							handler.OnAuthenticationChallenge(crm.GetChannelIdentifier(), serverCookieB)
+						} else {
+							handler.OnBadUsageError(crm.GetChannelIdentifier())
+						}
+					case "im.ricochet.chat":
+						handler.OnOpenChannelRequestSuccess(crm.GetChannelIdentifier())
+					case "im.ricochet.contact.request":
+						responseI, err := proto.GetExtension(res.GetChannelResult(), Protocol_Data_ContactRequest.E_Response)
+						if err == nil {
+							response, check := responseI.(*Protocol_Data_ContactRequest.Response)
+							if check {
+								handler.OnContactRequestAck(crm.GetChannelIdentifier(), response.GetStatus().String())
+								break
+							}
+						}
+						handler.OnBadUsageError(crm.GetChannelIdentifier())
+					default:
+						handler.OnBadUsageError(crm.GetChannelIdentifier())
+					}
+				} else {
+					if oc.GetChannelType(crm.GetChannelIdentifier()) != "none" {
+						handler.OnFailedChannelOpen(crm.GetChannelIdentifier(), crm.GetCommonError().String())
+					} else {
+						oc.CloseChannel(crm.GetChannelIdentifier())
+					}
+				}
+			} else {
+				// Unknown Message
+				oc.CloseChannel(packet.Channel)
+			}
+		} else if oc.GetChannelType(packet.Channel) == "im.ricochet.auth.hidden-service" {
+			res := new(Protocol_Data_AuthHiddenService.Packet)
+			err := proto.Unmarshal(packet.Data[:], res)
+
+			if err != nil {
+				oc.CloseChannel(packet.Channel)
+				continue
+			}
+
+			if res.GetProof() != nil && !oc.Client { // Only Clients Send Proofs
+				handler.OnAuthenticationProof(packet.Channel, res.GetProof().GetPublicKey(), res.GetProof().GetSignature())
+			} else if res.GetResult() != nil && oc.Client { // Only Servers Send Results
+				handler.OnAuthenticationResult(packet.Channel, res.GetResult().GetAccepted(), res.GetResult().GetIsKnownContact())
+			} else {
+				// If neither of the above are satisfied we just close the connection
+				oc.Close()
+			}
+
+		} else if oc.GetChannelType(packet.Channel) == "im.ricochet.chat" {
+
+			// NOTE: These auth checks should be redundant, however they
+			// are included here for defense-in-depth if for some reason
+			// a previously authed connection becomes untrusted / not known and
+			// the state is not cleaned up.
+			if !oc.IsAuthed {
+				// Can't send chat messages if not authorized
+				handler.OnUnauthorizedError(packet.Channel)
+			} else if !handler.IsKnownContact(oc.OtherHostname) {
+				// Can't send chat message if not a known contact
+				handler.OnUnauthorizedError(packet.Channel)
+			} else {
+				res := new(Protocol_Data_Chat.Packet)
+				err := proto.Unmarshal(packet.Data[:], res)
+
+				if err != nil {
+					oc.CloseChannel(packet.Channel)
+					continue
+				}
+
+				if res.GetChatMessage() != nil {
+					handler.OnChatMessage(packet.Channel, int32(res.GetChatMessage().GetMessageId()), res.GetChatMessage().GetMessageText())
+				} else if res.GetChatAcknowledge() != nil {
+					handler.OnChatMessageAck(packet.Channel, int32(res.GetChatMessage().GetMessageId()))
+				} else {
+					// If neither of the above are satisfied we just close the connection
+					oc.Close()
+				}
+			}
+		} else if oc.GetChannelType(packet.Channel) == "im.ricochet.contact.request" {
+
+			// NOTE: These auth checks should be redundant, however they
+			// are included here for defense-in-depth if for some reason
+			// a previously authed connection becomes untrusted / not known and
+			// the state is not cleaned up.
+			if !oc.Client {
+				// Clients are not allowed to send contact request responses
+				handler.OnBadUsageError(packet.Channel)
+			} else if !oc.IsAuthed {
+				// Can't send a contact request if not authed
+				handler.OnBadUsageError(packet.Channel)
+			} else {
+				res := new(Protocol_Data_ContactRequest.Response)
+				err := proto.Unmarshal(packet.Data[:], res)
+				log.Printf("%v", res)
+				if err != nil {
+					oc.CloseChannel(packet.Channel)
+					continue
+				}
+				handler.OnContactRequestAck(packet.Channel, res.GetStatus().String())
+			}
+		} else if oc.GetChannelType(packet.Channel) == "none" {
+			// Invalid Channel Assignment
+			oc.CloseChannel(packet.Channel)
+		} else {
+			oc.Close()
+		}
+	}
 }

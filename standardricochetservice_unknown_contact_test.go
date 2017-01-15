@@ -6,29 +6,44 @@ import "log"
 
 type TestUnknownContactService struct {
 	StandardRicochetService
+}
+
+func (ts *TestUnknownContactService) OnNewConnection(oc *OpenConnection) {
+	go oc.Process(&TestUnknownContactConnection{})
+}
+
+type TestUnknownContactConnection struct {
+	StandardRicochetConnection
 	FailedToOpen bool
 }
 
-func (ts *TestUnknownContactService) OnAuthenticationResult(oc *OpenConnection, channelID int32, result bool, isKnownContact bool) {
-	log.Printf("Authentication Result")
-	ts.StandardRicochetService.OnAuthenticationResult(oc, channelID, result, isKnownContact)
-	oc.OpenChatChannel(5)
-}
-
-func (ts *TestUnknownContactService) OnFailedChannelOpen(oc *OpenConnection, channelID int32, errorType string) {
-	log.Printf("Failed Channel Open %v", errorType)
-	oc.UnsetChannel(channelID)
-	if errorType == "UnauthorizedError" {
-		ts.FailedToOpen = true
-	}
-}
-
-func (ts *TestUnknownContactService) IsKnownContact(hostname string) bool {
+func (tc *TestUnknownContactConnection) IsKnownContact(hostname string) bool {
 	return false
 }
 
+func (tc *TestUnknownContactConnection) OnAuthenticationProof(channelID int32, publicKey, signature []byte) {
+	result := tc.Conn.ValidateProof(channelID, publicKey, signature)
+	tc.Conn.SendAuthenticationResult(channelID, result, false)
+	tc.Conn.IsAuthed = result
+	tc.Conn.CloseChannel(channelID)
+}
+
+func (tc *TestUnknownContactConnection) OnAuthenticationResult(channelID int32, result bool, isKnownContact bool) {
+	log.Printf("Authentication Result")
+	tc.StandardRicochetConnection.OnAuthenticationResult(channelID, result, isKnownContact)
+	tc.Conn.OpenChatChannel(5)
+}
+
+func (tc *TestUnknownContactConnection) OnFailedChannelOpen(channelID int32, errorType string) {
+	log.Printf("Failed Channel Open %v", errorType)
+	tc.Conn.UnsetChannel(channelID)
+	if errorType == "UnauthorizedError" {
+		tc.FailedToOpen = true
+	}
+}
+
 func TestUnknownContactServer(t *testing.T) {
-	ricochetService := new(StandardRicochetService)
+	ricochetService := new(TestUnknownContactService)
 	err := ricochetService.Init("./private_key")
 
 	if err != nil {
@@ -39,21 +54,19 @@ func TestUnknownContactServer(t *testing.T) {
 
 	time.Sleep(time.Second * 2)
 
-	ricochetService2 := new(TestUnknownContactService)
-	err = ricochetService2.Init("./private_key")
-
-	if err != nil {
-		t.Errorf("Could not initate ricochet service: %v", err)
-	}
-
-	go ricochetService2.Listen(ricochetService2, 9883)
-	err = ricochetService2.Connect("127.0.0.1:9882|kwke2hntvyfqm7dr")
+	oc, err := ricochetService.Connect("127.0.0.1:9882|kwke2hntvyfqm7dr")
 	if err != nil {
 		t.Errorf("Could not connect to ricochet service:  %v", err)
 	}
+	connectionHandler := &TestUnknownContactConnection{
+		StandardRicochetConnection: StandardRicochetConnection{
+			PrivateKey: ricochetService.PrivateKey,
+		},
+	}
+	go oc.Process(connectionHandler)
 
 	time.Sleep(time.Second * 2)
-	if !ricochetService2.FailedToOpen {
+	if !connectionHandler.FailedToOpen {
 		t.Errorf("Test server did receive message should have failed")
 	}
 

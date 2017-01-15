@@ -10,10 +10,19 @@ import "log"
 
 type TestUnauthorizedService struct {
 	StandardRicochetService
+}
+
+func (ts *TestUnauthorizedService) OnNewConnection(oc *OpenConnection) {
+	go oc.Process(&StandardRicochetConnection{})
+}
+
+type TestUnauthorizedConnection struct {
+	StandardRicochetConnection
 	FailedToOpen int
 }
 
-func (ts *TestUnauthorizedService) OnConnect(oc *OpenConnection) {
+func (tc *TestUnauthorizedConnection) OnReady(oc *OpenConnection) {
+	tc.StandardRicochetConnection.OnReady(oc)
 	if oc.Client {
 		log.Printf("Attempting Authentication Not Authorized")
 		oc.IsAuthed = true // Connections to Servers are Considered Authenticated by Default
@@ -23,10 +32,10 @@ func (ts *TestUnauthorizedService) OnConnect(oc *OpenConnection) {
 	}
 }
 
-func (ts *TestUnauthorizedService) OnFailedChannelOpen(oc *OpenConnection, channelID int32, errorType string) {
-	oc.UnsetChannel(channelID)
+func (tc *TestUnauthorizedConnection) OnFailedChannelOpen(channelID int32, errorType string) {
+	tc.Conn.UnsetChannel(channelID)
 	if errorType == "UnauthorizedError" {
-		ts.FailedToOpen++
+		tc.FailedToOpen++
 	}
 }
 
@@ -50,13 +59,19 @@ func TestUnauthorizedClientReject(t *testing.T) {
 	}
 
 	go ricochetService2.Listen(ricochetService2, 9881)
-	err = ricochetService2.Connect("127.0.0.1:9880|kwke2hntvyfqm7dr")
+	oc, err := ricochetService2.Connect("127.0.0.1:9880|kwke2hntvyfqm7dr")
 	if err != nil {
 		t.Errorf("Could not connect to ricochet service:  %v", err)
 	}
+	connectionHandler := &TestUnauthorizedConnection{
+		StandardRicochetConnection: StandardRicochetConnection{
+			PrivateKey: ricochetService2.PrivateKey,
+		},
+	}
+	go oc.Process(connectionHandler)
 
 	time.Sleep(time.Second * 2)
-	if ricochetService2.FailedToOpen != 2 {
+	if connectionHandler.FailedToOpen != 2 {
 		t.Errorf("Test server did not reject open channels with unauthorized error")
 	}
 

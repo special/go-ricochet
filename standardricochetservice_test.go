@@ -6,52 +6,69 @@ import "log"
 
 type TestService struct {
 	StandardRicochetService
-	ReceivedMessage bool
-	KnownContact    bool // Mocking contact request
 }
 
-func (ts *TestService) OnAuthenticationResult(oc *OpenConnection, channelID int32, result bool, isKnownContact bool) {
-	ts.StandardRicochetService.OnAuthenticationResult(oc, channelID, result, isKnownContact)
+func (ts *TestService) OnNewConnection(oc *OpenConnection) {
+	ts.StandardRicochetService.OnNewConnection(oc)
+	go oc.Process(&TestConnection{})
+}
+
+type TestConnection struct {
+	StandardRicochetConnection
+	KnownContact bool // Mocking contact request
+}
+
+func (tc *TestConnection) IsKnownContact(hostname string) bool {
+	return tc.KnownContact
+}
+
+func (tc *TestConnection) OnAuthenticationProof(channelID int32, publicKey, signature []byte) {
+	result := tc.Conn.ValidateProof(channelID, publicKey, signature)
+	tc.Conn.SendAuthenticationResult(channelID, result, tc.KnownContact)
+	tc.Conn.IsAuthed = result
+	tc.Conn.CloseChannel(channelID)
+}
+
+func (tc *TestConnection) OnAuthenticationResult(channelID int32, result bool, isKnownContact bool) {
+	tc.StandardRicochetConnection.OnAuthenticationResult(channelID, result, isKnownContact)
 	if !isKnownContact {
 		log.Printf("Sending Contact Request")
-		oc.SendContactRequest(3, "test", "test")
+		tc.Conn.SendContactRequest(3, "test", "test")
 	}
 }
 
-func (ts *TestService) OnContactRequest(oc *OpenConnection, channelID int32, nick string, message string) {
-	ts.StandardRicochetService.OnContactRequest(oc, channelID, nick, message)
-	oc.AckContactRequestOnResponse(channelID, "Pending")
-	oc.AckContactRequest(channelID, "Accepted")
-	ts.KnownContact = true
-	oc.CloseChannel(channelID)
+func (tc *TestConnection) OnContactRequest(channelID int32, nick string, message string) {
+	tc.StandardRicochetConnection.OnContactRequest(channelID, nick, message)
+	tc.Conn.AckContactRequestOnResponse(channelID, "Pending")
+	tc.Conn.AckContactRequest(channelID, "Accepted")
+	tc.KnownContact = true
+	tc.Conn.CloseChannel(channelID)
 }
 
-func (ts *TestService) OnOpenChannelRequestSuccess(oc *OpenConnection, channelID int32) {
-	ts.StandardRicochetService.OnOpenChannelRequestSuccess(oc, channelID)
-	oc.SendMessage(channelID, "TEST MESSAGE")
+func (tc *TestConnection) OnOpenChannelRequestSuccess(channelID int32) {
+	tc.StandardRicochetConnection.OnOpenChannelRequestSuccess(channelID)
+	tc.Conn.SendMessage(channelID, "TEST MESSAGE")
 }
 
-func (ts *TestService) OnContactRequestAck(oc *OpenConnection, channelID int32, status string) {
-	ts.StandardRicochetService.OnContactRequestAck(oc, channelID, status)
+func (tc *TestConnection) OnContactRequestAck(channelID int32, status string) {
+	tc.StandardRicochetConnection.OnContactRequestAck(channelID, status)
 	if status == "Accepted" {
 		log.Printf("Got accepted contact request")
-		ts.KnownContact = true
-		oc.OpenChatChannel(5)
+		tc.KnownContact = true
+		tc.Conn.OpenChatChannel(5)
 	} else if status == "Pending" {
 		log.Printf("Got pending contact request")
 	}
 }
 
-func (ts *TestService) OnChatMessage(oc *OpenConnection, channelID int32, messageID int32, message string) {
-	ts.StandardRicochetService.OnChatMessage(oc, channelID, messageID, message)
+func (tc *TestConnection) OnChatMessage(channelID int32, messageID int32, message string) {
+	tc.StandardRicochetConnection.OnChatMessage(channelID, messageID, message)
 	if message == "TEST MESSAGE" {
-		ts.ReceivedMessage = true
+		receivedMessage = true
 	}
 }
 
-func (ts *TestService) IsKnownContact(hostname string) bool {
-	return ts.KnownContact
-}
+var receivedMessage bool
 
 func TestServer(t *testing.T) {
 	ricochetService := new(TestService)
@@ -73,16 +90,21 @@ func TestServer(t *testing.T) {
 	}
 
 	go ricochetService2.Listen(ricochetService2, 9879)
-	err = ricochetService2.Connect("127.0.0.1:9878|kwke2hntvyfqm7dr")
+	oc, err := ricochetService2.Connect("127.0.0.1:9878|kwke2hntvyfqm7dr")
 	if err != nil {
 		t.Errorf("Could not connect to ricochet service:  %v", err)
 	}
+	testClient := &TestConnection{
+		StandardRicochetConnection: StandardRicochetConnection{
+			PrivateKey: ricochetService2.PrivateKey,
+		},
+	}
+	go oc.Process(testClient)
 
 	time.Sleep(time.Second * 5) // Wait a bit longer
-	if !ricochetService.ReceivedMessage {
+	if !receivedMessage {
 		t.Errorf("Test server did not receive message")
 	}
-
 }
 
 func TestServerInvalidKey(t *testing.T) {
@@ -100,7 +122,7 @@ func TestServerCouldNotConnect(t *testing.T) {
 	if err != nil {
 		t.Errorf("Could not initate ricochet service: %v", err)
 	}
-	err = ricochetService.Connect("127.0.0.1:65535|kwke2hntvyfqm7dr")
+	_, err = ricochetService.Connect("127.0.0.1:65535|kwke2hntvyfqm7dr")
 	if err == nil {
 		t.Errorf("Should not have been been able to connect to 127.0.0.1:65535|kwke2hntvyfqm7dr")
 	}
