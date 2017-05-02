@@ -1,0 +1,15 @@
+{
+	"ImportPath": "github.com/s-rah/go-ricochet",
+	"GoVersion": "go1.7",
+	"GodepVersion": "v79",
+	"Deps": [
+		{
+			"ImportPath": "github.com/golang/protobuf/proto",
+			"Rev": "8ee79997227bf9b34611aee7946ae64735e6fd93"
+		},
+		{
+			"ImportPath": "golang.org/x/net/proxy",
+			"Rev": "60c41d1de8da134c05b7b40154a9a82bf5b7edb9"
+		}
+	]
+}

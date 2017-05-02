@@ -1,7 +1,30 @@
 package utils
 
-import "fmt"
-import "log"
+import (
+	"fmt"
+	"log"
+)
+
+// Error captures various common ricochet errors
+type Error string
+
+func (e Error) Error() string { return string(e) }
+
+// Defining Versions
+const (
+	VersionNegotiationError  = Error("VersionNegotiationError")
+	VersionNegotiationFailed = Error("VersionNegotiationFailed")
+
+	RicochetConnectionClosed = Error("RicochetConnectionClosed")
+	RicochetProtocolError    = Error("RicochetProtocolError")
+
+	UnknownChannelTypeError      = Error("UnknownChannelTypeError")
+	UnauthorizedChannelTypeError = Error("UnauthorizedChannelTypeError")
+
+	ActionTimedOutError = Error("ActionTimedOutError")
+
+	ClientFailedToAuthenticateError = Error("ClientFailedToAuthenticateError")
+)
 
 // RecoverFromError doesn't really recover from anything....see comment below
 func RecoverFromError() {

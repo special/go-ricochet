@@ -1,7 +1,5 @@
 # GoRicochet [![Build Status](https://travis-ci.org/s-rah/go-ricochet.svg?branch=master)](https://travis-ci.org/s-rah/go-ricochet) [![Go Report Card](https://goreportcard.com/badge/github.com/s-rah/go-ricochet)](https://goreportcard.com/report/github.com/s-rah/go-ricochet) [![Coverage Status](https://coveralls.io/repos/github/s-rah/go-ricochet/badge.svg?branch=master)](https://coveralls.io/github/s-rah/go-ricochet?branch=master)
 
-![GoRicochet](logo.png)
-
 GoRicochet is an experimental implementation of the [Ricochet Protocol](https://ricochet.im)
 in Go.
 

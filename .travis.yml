@@ -16,6 +16,6 @@ install:
 
 script:
 
-    - cd $TRAVIS_BUILD_DIR && ./tests.sh
+    - cd $TRAVIS_BUILD_DIR && ./testing/tests.sh
     - test -z "$GOFMT"
     - goveralls -coverprofile=./coverage.out -service travis-ci
