@@ -16,7 +16,7 @@ import (
 	"log"
 )
 
-// HiddenServiceAuthChannel wraps implementation o fim.ricochet.auth.hidden-service"
+// HiddenServiceAuthChannel wraps implementation of im.ricochet.auth.hidden-service"
 type HiddenServiceAuthChannel struct {
 	// Methods of Handler are called for events on this channel
 	Handler AuthChannelHandler
