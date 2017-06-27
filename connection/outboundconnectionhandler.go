@@ -4,6 +4,7 @@ import (
 	"crypto/rsa"
 	"errors"
 	"github.com/s-rah/go-ricochet/channels"
+	"github.com/s-rah/go-ricochet/utils"
 	"github.com/s-rah/go-ricochet/policies"
 	"log"
 )
@@ -33,6 +34,11 @@ func HandleOutboundConnection(c *Connection) *OutboundConnectionHandler {
 // accepts us as a known contact. Unknown contacts will generally need to send a contact
 // request before any other activity.
 func (och *OutboundConnectionHandler) ProcessAuthAsClient(privateKey *rsa.PrivateKey) (bool, error) {
+
+        if privateKey == nil {
+                return false, utils.PrivateKeyNotSetError
+        }
+
 	ach := new(AutoConnectionHandler)
 	ach.Init(privateKey, och.connection.RemoteHostname)
 

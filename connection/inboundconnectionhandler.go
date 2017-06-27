@@ -35,6 +35,10 @@ func HandleInboundConnection(c *Connection) *InboundConnectionHandler {
 // assume they are required to send a contact request before any other activity.
 func (ich *InboundConnectionHandler) ProcessAuthAsServer(privateKey *rsa.PrivateKey, sach func(hostname string, publicKey rsa.PublicKey) (allowed, known bool)) error {
 
+        if privateKey == nil {
+                return utils.PrivateKeyNotSetError
+        }
+
 	ach := new(AutoConnectionHandler)
 	ach.Init(privateKey, ich.connection.RemoteHostname)
 	ach.SetServerAuthHandler(sach)

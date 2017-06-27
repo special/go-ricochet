@@ -71,9 +71,10 @@ func GetOpenAuthenticationChannelMessage() *Protocol_Data_Control.OpenChannel {
 }
 
 func TestAuthenticationOpenInbound(t *testing.T) {
-
+	privateKey, _ := utils.LoadPrivateKeyFromFile("../testing/private_key")
 	opm := GetOpenAuthenticationChannelMessage()
 	authHandler := new(HiddenServiceAuthChannel)
+	authHandler.PrivateKey = privateKey
 	channel := Channel{ID: 1}
 	response, err := authHandler.OpenInbound(&channel, opm)
 
@@ -90,7 +91,9 @@ func TestAuthenticationOpenInbound(t *testing.T) {
 }
 
 func TestAuthenticationOpenOutbound(t *testing.T) {
+	privateKey, _ := utils.LoadPrivateKeyFromFile("../testing/private_key")
 	authHandler := new(HiddenServiceAuthChannel)
+	authHandler.PrivateKey = privateKey
 	channel := Channel{ID: 1}
 	response, err := authHandler.OpenOutbound(&channel)
 

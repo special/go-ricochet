@@ -75,6 +75,11 @@ func (ah *HiddenServiceAuthChannel) Closed(err error) {
 // returned, it will be sent as the ChannelResult message.
 // Remote -> [Open Authentication Channel] -> Local
 func (ah *HiddenServiceAuthChannel) OpenInbound(channel *Channel, oc *Protocol_Data_Control.OpenChannel) ([]byte, error) {
+
+        if ah.PrivateKey == nil {
+                return nil, utils.PrivateKeyNotSetError
+        }
+
 	ah.channel = channel
 	clientCookie, _ := proto.GetExtension(oc, Protocol_Data_AuthHiddenService.E_ClientCookie)
 	if len(clientCookie.([]byte)[:]) != 16 {
@@ -92,6 +97,12 @@ func (ah *HiddenServiceAuthChannel) OpenInbound(channel *Channel, oc *Protocol_D
 // returned, it will be sent as the OpenChannel message.
 // Local -> [Open Authentication Channel] -> Remote
 func (ah *HiddenServiceAuthChannel) OpenOutbound(channel *Channel) ([]byte, error) {
+
+        if ah.PrivateKey == nil {
+                return nil, utils.PrivateKeyNotSetError
+        }
+
+
 	ah.channel = channel
 	messageBuilder := new(utils.MessageBuilder)
 	return messageBuilder.OpenAuthenticationChannel(ah.channel.ID, ah.GenClientCookie()), nil

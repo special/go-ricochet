@@ -24,6 +24,9 @@ const (
 	ActionTimedOutError = Error("ActionTimedOutError")
 
 	ClientFailedToAuthenticateError = Error("ClientFailedToAuthenticateError")
+
+
+        PrivateKeyNotSetError = Error("PrivateKeyNotSetError")
 )
 
 // RecoverFromError doesn't really recover from anything....see comment below

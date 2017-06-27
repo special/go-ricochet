@@ -24,7 +24,9 @@ type AutoConnectionHandler struct {
 }
 
 // Init ...
+// TODO: Split this into client and server init
 func (ach *AutoConnectionHandler) Init(privateKey *rsa.PrivateKey, serverHostname string) {
+
 	ach.handlerMap = make(map[string]func() channels.Handler)
 	ach.RegisterChannelHandler("im.ricochet.auth.hidden-service", func() channels.Handler {
 		hsau := new(channels.HiddenServiceAuthChannel)
