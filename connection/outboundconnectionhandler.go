@@ -6,7 +6,6 @@ import (
 	"github.com/s-rah/go-ricochet/channels"
 	"github.com/s-rah/go-ricochet/utils"
 	"github.com/s-rah/go-ricochet/policies"
-	"log"
 )
 
 // OutboundConnectionHandler is a convieniance wrapper for handling outbound
@@ -48,9 +47,7 @@ func (och *OutboundConnectionHandler) ProcessAuthAsClient(privateKey *rsa.Privat
 		if err != nil {
 			return
 		}
-		log.Printf("waiting for auth result")
 		result = ach.WaitForAuthenticationEvent()
-		log.Printf("received auth result")
 		och.connection.Break()
 	}()
 

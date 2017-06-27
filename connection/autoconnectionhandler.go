@@ -4,7 +4,6 @@ import (
 	"crypto/rsa"
 	"github.com/s-rah/go-ricochet/channels"
 	"github.com/s-rah/go-ricochet/utils"
-	"log"
 )
 
 // AutoConnectionHandler implements the ConnectionHandler interface on behalf of
@@ -59,7 +58,6 @@ func (ach *AutoConnectionHandler) WaitForAuthenticationEvent() channels.AuthChan
 
 // ClientAuthResult ...
 func (ach *AutoConnectionHandler) ClientAuthResult(accepted bool, isKnownContact bool) {
-	log.Printf("Got auth result %v %v", accepted, isKnownContact)
 	ach.authResultChannel <- channels.AuthChannelResult{Accepted: accepted, IsKnownContact: isKnownContact}
 }
 
@@ -89,7 +87,6 @@ func (ach *AutoConnectionHandler) OnOpenChannelRequest(ctype string) (channels.H
 	handler, ok := ach.handlerMap[ctype]
 	if ok {
 		h := handler()
-		log.Printf("Got Channel Handler")
 		return h, nil
 	}
 	return nil, utils.UnknownChannelTypeError

@@ -21,6 +21,7 @@ func TestProcessAuthAsServer(t *testing.T) {
 		cconn, _ := net.Dial("tcp", ln.Addr().String())
 
 		orc := NewOutboundConnection(cconn, "kwke2hntvyfqm7dr")
+		orc.TraceLog(true)
 		privateKey, _ := utils.LoadPrivateKeyFromFile("../testing/private_key")
 
 		known, err := HandleOutboundConnection(orc).ProcessAuthAsClient(privateKey)

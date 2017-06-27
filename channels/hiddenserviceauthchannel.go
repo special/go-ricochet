@@ -13,7 +13,6 @@ import (
 	"github.com/s-rah/go-ricochet/wire/auth"
 	"github.com/s-rah/go-ricochet/wire/control"
 	"io"
-	"log"
 )
 
 // HiddenServiceAuthChannel wraps implementation of im.ricochet.auth.hidden-service"
@@ -255,7 +254,7 @@ func (ah *HiddenServiceAuthChannel) GenChallenge(clientHostname string, serverHo
 	key := make([]byte, 32)
 	copy(key[0:16], ah.clientCookie[:])
 	copy(key[16:], ah.serverCookie[:])
-	log.Printf("CHALLENGE: %s %s %v", clientHostname, serverHostname, key)
+
 	value := []byte(clientHostname + serverHostname)
 	mac := hmac.New(sha256.New, key)
 	mac.Write(value)

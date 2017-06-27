@@ -5,7 +5,6 @@ import (
     "github.com/s-rah/go-ricochet/connection"
     "io"
     "net"
-    "log"
 )
 // Open establishes a protocol session on an established net.Conn, and returns a new
 // OpenConnection instance representing this connection. On error, the connection
@@ -14,20 +13,17 @@ import (
 // handling protocol messages.
 func Open(remoteHostname string) (*connection.Connection, error) {
     networkResolver := utils.NetworkResolver{}
-    log.Printf("Connecting...")
     conn, remoteHostname, err := networkResolver.Resolve(remoteHostname)
 
     if err != nil {
         return nil, err
     }
 
-    log.Printf("Connected...negotiating version")
     rc, err := negotiateVersion(conn, remoteHostname)
     if err != nil {
         conn.Close()
         return nil, err
     }
-        log.Printf("Connected...negotiated version")
     return rc, nil
 }
 
