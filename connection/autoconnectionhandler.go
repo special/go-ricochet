@@ -65,7 +65,7 @@ func (ach *AutoConnectionHandler) ClientAuthResult(accepted bool, isKnownContact
 func (ach *AutoConnectionHandler) ServerAuthValid(hostname string, publicKey rsa.PublicKey) (allowed, known bool) {
 	// Do something
 	accepted, isKnownContact := ach.sach(hostname, publicKey)
-	ach.authResultChannel <- channels.AuthChannelResult{Accepted: accepted, IsKnownContact: isKnownContact}
+	ach.authResultChannel <- channels.AuthChannelResult{Hostname: hostname, Accepted: accepted, IsKnownContact: isKnownContact}
 	return accepted, isKnownContact
 }
 

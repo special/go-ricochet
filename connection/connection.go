@@ -2,14 +2,13 @@ package connection
 
 import (
 	"errors"
+	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/s-rah/go-ricochet/channels"
 	"github.com/s-rah/go-ricochet/utils"
 	"github.com/s-rah/go-ricochet/wire/control"
 	"io"
 	"log"
-	"time"
-	"fmt"
 )
 
 // Connection encapsulates the state required to maintain a connection to
@@ -30,7 +29,7 @@ type Connection struct {
 	unlockResponseChannel chan bool
 
 	messageBuilder utils.MessageBuilder
-	trace           bool
+	trace          bool
 
 	Conn           io.ReadWriteCloser
 	IsInbound      bool
@@ -77,7 +76,7 @@ func NewOutboundConnection(conn io.ReadWriteCloser, remoteHostname string) *Conn
 }
 
 func (rc *Connection) TraceLog(enabled bool) {
-        rc.trace = enabled
+	rc.trace = enabled
 }
 
 // start
@@ -111,12 +110,12 @@ func (rc *Connection) Do(do func() error) error {
 // are not met on the local side (a nill error return does not mean the
 // channel was opened successfully)
 func (rc *Connection) RequestOpenChannel(ctype string, handler Handler) error {
-        rc.traceLog(fmt.Sprintf("requesting open channel of type %s", ctype))
+	rc.traceLog(fmt.Sprintf("requesting open channel of type %s", ctype))
 	return rc.Do(func() error {
 		chandler, err := handler.OnOpenChannelRequest(ctype)
 
 		if err != nil {
-		        rc.traceLog(fmt.Sprintf("failed to reqeust open channel of type %v", err))
+			rc.traceLog(fmt.Sprintf("failed to request open channel of type %v", err))
 			return err
 		}
 
@@ -125,14 +124,14 @@ func (rc *Connection) RequestOpenChannel(ctype string, handler Handler) error {
 			// Enforce Authentication Check.
 			_, authed := rc.Authentication[chandler.RequiresAuthentication()]
 			if !authed {
-				return errors.New("connection is not auth'd")
+				return utils.UnauthorizedActionError
 			}
 		}
 
 		channel, err := rc.channelManager.OpenChannelRequest(chandler)
 
 		if err != nil {
-		        rc.traceLog(fmt.Sprintf("failed to reqeust open channel of type %v", err))
+			rc.traceLog(fmt.Sprintf("failed to reqeust open channel of type %v", err))
 			return err
 		}
 
@@ -148,10 +147,10 @@ func (rc *Connection) RequestOpenChannel(ctype string, handler Handler) error {
 		}
 		response, err := chandler.OpenOutbound(channel)
 		if err == nil {
-		        rc.traceLog(fmt.Sprintf("requested open channel of type %s", ctype))
+			rc.traceLog(fmt.Sprintf("requested open channel of type %s", ctype))
 			rc.SendRicochetPacket(rc.Conn, 0, response)
 		} else {
-		        rc.traceLog(fmt.Sprintf("failed to reqeust open channel of type %v", err))
+			rc.traceLog(fmt.Sprintf("failed to reqeust open channel of type %v", err))
 			rc.channelManager.RemoveChannel(channel.ID)
 		}
 		return nil
@@ -174,7 +173,6 @@ func (rc *Connection) Process(handler Handler) error {
 	for !breaked {
 
 		var packet utils.RicochetData
-		tick := time.Tick(30 * time.Second)
 		select {
 		case <-rc.unlockChannel:
 			<-rc.unlockResponseChannel
@@ -189,14 +187,10 @@ func (rc *Connection) Process(handler Handler) error {
 			rc.Conn.Close()
 			handler.OnClosed(err)
 			return err
-		case <-tick:
-			rc.traceLog("peer timed out")
-			return errors.New("peer timed out")
 		}
 
-		
 		if packet.Channel == 0 {
-		        rc.traceLog(fmt.Sprintf("received control packet on channel %d", packet.Channel))
+			rc.traceLog(fmt.Sprintf("received control packet on channel %d", packet.Channel))
 			res := new(Protocol_Data_Control.Packet)
 			err := proto.Unmarshal(packet.Data[:], res)
 			if err == nil {
@@ -209,9 +203,9 @@ func (rc *Connection) Process(handler Handler) error {
 				if len(packet.Data) == 0 {
 					rc.traceLog(fmt.Sprintf("removing channel %d", packet.Channel))
 					rc.channelManager.RemoveChannel(packet.Channel)
-					(*channel.Handler).Closed(errors.New("channel closed by peer"))
+					(*channel.Handler).Closed(utils.ChannelClosedByPeerError)
 				} else {
-		        		rc.traceLog(fmt.Sprintf("received packet on %v channel %d", (*channel.Handler).Type(), packet.Channel))
+					rc.traceLog(fmt.Sprintf("received packet on %v channel %d", (*channel.Handler).Type(), packet.Channel))
 					// Send The Ricochet Packet to the Handler
 					(*channel.Handler).Packet(packet.Data[:])
 				}
@@ -219,7 +213,7 @@ func (rc *Connection) Process(handler Handler) error {
 				// When a non-zero packet is received for an unknown
 				// channel, the recipient responds by closing
 				// that channel.
-			        rc.traceLog(fmt.Sprintf("received packet on unknown channel %d. closing.", packet.Channel))
+				rc.traceLog(fmt.Sprintf("received packet on unknown channel %d. closing.", packet.Channel))
 				if len(packet.Data) != 0 {
 					rc.SendRicochetPacket(rc.Conn, packet.Channel, []byte{})
 				}
@@ -248,7 +242,7 @@ func (rc *Connection) controlPacket(handler Handler, res *Protocol_Data_Control.
 
 		// Check that we have the authentication already
 		if chandler.RequiresAuthentication() != "none" {
-		        rc.traceLog(fmt.Sprintf("channel %v requires authorization of type %v", chandler.Type(), chandler.RequiresAuthentication()))
+			rc.traceLog(fmt.Sprintf("channel %v requires authorization of type %v", chandler.Type(), chandler.RequiresAuthentication()))
 			// Enforce Authentication Check.
 			_, authed := rc.Authentication[chandler.RequiresAuthentication()]
 			if !authed {
@@ -276,10 +270,10 @@ func (rc *Connection) controlPacket(handler Handler, res *Protocol_Data_Control.
 
 			response, err := chandler.OpenInbound(channel, opm)
 			if err == nil && channel.Pending == false {
-			        rc.traceLog(fmt.Sprintf("opening channel %v on %v", channel.Type, channel.ID))
+				rc.traceLog(fmt.Sprintf("opening channel %v on %v", channel.Type, channel.ID))
 				rc.SendRicochetPacket(rc.Conn, 0, response)
 			} else {
-			        rc.traceLog(fmt.Sprintf("removing channel %v", channel.ID))
+				rc.traceLog(fmt.Sprintf("removing channel %v", channel.ID))
 				rc.channelManager.RemoveChannel(channel.ID)
 				rc.SendRicochetPacket(rc.Conn, 0, []byte{})
 			}
@@ -297,15 +291,15 @@ func (rc *Connection) controlPacket(handler Handler, res *Protocol_Data_Control.
 		channel, found := rc.channelManager.GetChannel(id)
 
 		if !found {
-		        rc.traceLog(fmt.Sprintf("channel result recived for unknown channel: %v", channel.Type, id))
+			rc.traceLog(fmt.Sprintf("channel result recived for unknown channel: %v", channel.Type, id))
 			return
 		}
 
 		if cr.GetOpened() {
-		        rc.traceLog(fmt.Sprintf("channel of type %v opened on %v", channel.Type, id))
+			rc.traceLog(fmt.Sprintf("channel of type %v opened on %v", channel.Type, id))
 			(*channel.Handler).OpenOutboundResult(nil, cr)
 		} else {
-		        rc.traceLog(fmt.Sprintf("channel of type %v rejected on %v", channel.Type, id))
+			rc.traceLog(fmt.Sprintf("channel of type %v rejected on %v", channel.Type, id))
 			(*channel.Handler).OpenOutboundResult(errors.New(""), cr)
 		}
 
@@ -321,27 +315,27 @@ func (rc *Connection) controlPacket(handler Handler, res *Protocol_Data_Control.
 			rc.SendRicochetPacket(rc.Conn, 0, raw)
 		}
 	} else if res.GetEnableFeatures() != nil {
-	        rc.traceLog("received features enabled packet")
+		rc.traceLog("received features enabled packet")
 		messageBuilder := new(utils.MessageBuilder)
 		raw := messageBuilder.FeaturesEnabled([]string{})
-	        rc.traceLog("sending featured enabled empty response")
+		rc.traceLog("sending featured enabled empty response")
 		rc.SendRicochetPacket(rc.Conn, 0, raw)
 	} else if res.GetFeaturesEnabled() != nil {
 		// TODO We should never send out an enabled features
 		// request.
-		 rc.traceLog("sending unsolicited features enabled response")
+		rc.traceLog("sending unsolicited features enabled response")
 	}
 }
 
 func (rc *Connection) traceLog(message string) {
-        if rc.trace {
-                log.Printf(message)
-        }
+	if rc.trace {
+		log.Printf(message)
+	}
 }
 
 // Break causes Process() to return, but does not close the underlying connection
 func (rc *Connection) Break() {
-        rc.traceLog("breaking out of process loop")
+	rc.traceLog("breaking out of process loop")
 	rc.breakChannel <- true
 	<-rc.breakResultChannel // Wait for Process to End
 }

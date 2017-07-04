@@ -12,6 +12,7 @@ const (
 
 // AuthChannelResult captures the result of an authentication flow
 type AuthChannelResult struct {
+	Hostname       string
 	Accepted       bool
 	IsKnownContact bool
 }

@@ -58,7 +58,7 @@ func (echobot *RicochetEchoBot) Connect(privateKeyFile string, hostname string) 
 	})
 
 	rc, _ := goricochet.Open(hostname)
-	known, err  := connection.HandleOutboundConnection(rc).ProcessAuthAsClient(privateKey)
+	known, err := connection.HandleOutboundConnection(rc).ProcessAuthAsClient(privateKey)
 	if err == nil {
 
 		go rc.Process(echobot)

@@ -2,10 +2,9 @@ package connection
 
 import (
 	"crypto/rsa"
-	"errors"
 	"github.com/s-rah/go-ricochet/channels"
-	"github.com/s-rah/go-ricochet/utils"
 	"github.com/s-rah/go-ricochet/policies"
+	"github.com/s-rah/go-ricochet/utils"
 )
 
 // OutboundConnectionHandler is a convieniance wrapper for handling outbound
@@ -34,9 +33,9 @@ func HandleOutboundConnection(c *Connection) *OutboundConnectionHandler {
 // request before any other activity.
 func (och *OutboundConnectionHandler) ProcessAuthAsClient(privateKey *rsa.PrivateKey) (bool, error) {
 
-        if privateKey == nil {
-                return false, utils.PrivateKeyNotSetError
-        }
+	if privateKey == nil {
+		return false, utils.PrivateKeyNotSetError
+	}
 
 	ach := new(AutoConnectionHandler)
 	ach.Init(privateKey, och.connection.RemoteHostname)
@@ -61,5 +60,5 @@ func (och *OutboundConnectionHandler) ProcessAuthAsClient(privateKey *rsa.Privat
 			return result.IsKnownContact, nil
 		}
 	}
-	return false, errors.New("authentication was not accepted by the server")
+	return false, utils.ServerRejectedClientConnectionError
 }

@@ -1,11 +1,17 @@
 package channels
 
 import (
-	"errors"
 	"github.com/golang/protobuf/proto"
 	"github.com/s-rah/go-ricochet/utils"
 	"github.com/s-rah/go-ricochet/wire/contact"
 	"github.com/s-rah/go-ricochet/wire/control"
+)
+
+// Defining Versions
+const (
+	InvalidContactNameError    = utils.Error("InvalidContactNameError")
+	InvalidContactMessageError = utils.Error("InvalidContactMessageError")
+	InvalidContactRequestError = utils.Error("InvalidContactRequestError")
 )
 
 // ContactRequestChannel implements the ChannelHandler interface for a channel of
@@ -73,12 +79,12 @@ func (crc *ContactRequestChannel) OpenInbound(channel *Channel, oc *Protocol_Dat
 
 			if len(contactRequest.GetNickname()) > int(Protocol_Data_ContactRequest.Limits_NicknameMaxCharacters) {
 				// Violation of the Protocol
-				return nil, errors.New("invalid nickname")
+				return nil, InvalidContactNameError
 			}
 
 			if len(contactRequest.GetMessageText()) > int(Protocol_Data_ContactRequest.Limits_MessageMaxCharacters) {
 				// Violation of the Protocol
-				return nil, errors.New("invalid message")
+				return nil, InvalidContactMessageError
 			}
 
 			result := crc.Handler.ContactRequest(contactRequest.GetNickname(), contactRequest.GetMessageText())
@@ -86,7 +92,7 @@ func (crc *ContactRequestChannel) OpenInbound(channel *Channel, oc *Protocol_Dat
 			return messageBuilder.ReplyToContactRequestOnResponse(channel.ID, result), nil
 		}
 	}
-	return nil, errors.New("could not parse contact request extension")
+	return nil, InvalidContactRequestError
 }
 
 // OpenOutbound is the first method called for an outbound channel request.

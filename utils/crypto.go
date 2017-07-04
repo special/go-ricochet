@@ -4,8 +4,11 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
-	"errors"
 	"io/ioutil"
+)
+
+const (
+	InvalidPrivateKeyFileError = Error("InvalidPrivateKeyFileError")
 )
 
 // LoadPrivateKeyFromFile loads a private key from a file...
@@ -18,7 +21,7 @@ func LoadPrivateKeyFromFile(filename string) (*rsa.PrivateKey, error) {
 
 	block, _ := pem.Decode(pemData)
 	if block == nil || block.Type != "RSA PRIVATE KEY" {
-		return nil, errors.New("not a private key")
+		return nil, InvalidPrivateKeyFileError
 	}
 
 	return x509.ParsePKCS1PrivateKey(block.Bytes)

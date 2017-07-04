@@ -7,12 +7,15 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/asn1"
-	"errors"
 	"github.com/golang/protobuf/proto"
 	"github.com/s-rah/go-ricochet/utils"
 	"github.com/s-rah/go-ricochet/wire/auth"
 	"github.com/s-rah/go-ricochet/wire/control"
 	"io"
+)
+
+const (
+	InvalidClientCookieError = utils.Error("InvalidClientCookieError")
 )
 
 // HiddenServiceAuthChannel wraps implementation of im.ricochet.auth.hidden-service"
@@ -75,15 +78,15 @@ func (ah *HiddenServiceAuthChannel) Closed(err error) {
 // Remote -> [Open Authentication Channel] -> Local
 func (ah *HiddenServiceAuthChannel) OpenInbound(channel *Channel, oc *Protocol_Data_Control.OpenChannel) ([]byte, error) {
 
-        if ah.PrivateKey == nil {
-                return nil, utils.PrivateKeyNotSetError
-        }
+	if ah.PrivateKey == nil {
+		return nil, utils.PrivateKeyNotSetError
+	}
 
 	ah.channel = channel
 	clientCookie, _ := proto.GetExtension(oc, Protocol_Data_AuthHiddenService.E_ClientCookie)
 	if len(clientCookie.([]byte)[:]) != 16 {
 		// reutrn without opening channel.
-		return nil, errors.New("invalid client cookie")
+		return nil, InvalidClientCookieError
 	}
 	ah.AddClientCookie(clientCookie.([]byte)[:])
 	messageBuilder := new(utils.MessageBuilder)
@@ -97,10 +100,9 @@ func (ah *HiddenServiceAuthChannel) OpenInbound(channel *Channel, oc *Protocol_D
 // Local -> [Open Authentication Channel] -> Remote
 func (ah *HiddenServiceAuthChannel) OpenOutbound(channel *Channel) ([]byte, error) {
 
-        if ah.PrivateKey == nil {
-                return nil, utils.PrivateKeyNotSetError
-        }
-
+	if ah.PrivateKey == nil {
+		return nil, utils.PrivateKeyNotSetError
+	}
 
 	ah.channel = channel
 	messageBuilder := new(utils.MessageBuilder)

@@ -20,12 +20,25 @@ const (
 	UnknownChannelTypeError      = Error("UnknownChannelTypeError")
 	UnauthorizedChannelTypeError = Error("UnauthorizedChannelTypeError")
 
+	// Timeout Errors
 	ActionTimedOutError = Error("ActionTimedOutError")
+	PeerTimedOutError   = Error("PeerTimedOutError")
 
-	ClientFailedToAuthenticateError = Error("ClientFailedToAuthenticateError")
+	// Authentication Errors
+	ClientFailedToAuthenticateError     = Error("ClientFailedToAuthenticateError")
+	ServerRejectedClientConnectionError = Error("ServerRejectedClientConnectionError")
 
+	UnauthorizedActionError  = Error("UnauthorizedActionError")
+	ChannelClosedByPeerError = Error("ChannelClosedByPeerError")
 
-        PrivateKeyNotSetError = Error("ClientFailedToAuthenticateError")
+	// Channel Management Errors
+	ServerAttemptedToOpenEvenNumberedChannelError = Error("ServerAttemptedToOpenEvenNumberedChannelError")
+	ClientAttemptedToOpenOddNumberedChannelError  = Error("ClientAttemptedToOpenOddNumberedChannelError")
+	ChannelIDIsAlreadyInUseError                  = Error("ChannelIDIsAlreadyInUseError")
+	AttemptToOpenMoreThanOneSingletonChannelError = Error("AttemptToOpenMoreThanOneSingletonChannelError")
+
+	// Library Use Errors
+	PrivateKeyNotSetError = Error("ClientFailedToAuthenticateError")
 )
 
 // CheckError is a helper function for panicing on errors which we need to handle

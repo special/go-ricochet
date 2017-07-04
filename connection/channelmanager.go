@@ -1,8 +1,8 @@
 package connection
 
 import (
-	"errors"
 	"github.com/s-rah/go-ricochet/channels"
+	"github.com/s-rah/go-ricochet/utils"
 )
 
 // ChannelManager encapsulates the logic for server and client side assignment
@@ -38,7 +38,7 @@ func NewServerChannelManager() *ChannelManager {
 func (cm *ChannelManager) OpenChannelRequest(chandler channels.Handler) (*channels.Channel, error) {
 	// Some channels only allow us to open one of them per connection
 	if chandler.Singleton() && cm.Channel(chandler.Type(), channels.Outbound) != nil {
-		return nil, errors.New("Connection already has channel of type " + chandler.Type())
+		return nil, utils.AttemptToOpenMoreThanOneSingletonChannelError
 	}
 
 	channel := new(channels.Channel)
@@ -57,20 +57,20 @@ func (cm *ChannelManager) OpenChannelRequest(chandler channels.Handler) (*channe
 func (cm *ChannelManager) OpenChannelRequestFromPeer(channelID int32, chandler channels.Handler) (*channels.Channel, error) {
 	if cm.isClient && (channelID%2) != 0 {
 		// Server is trying to open odd numbered channels
-		return nil, errors.New("server may only open even numbered channels")
+		return nil, utils.ServerAttemptedToOpenEvenNumberedChannelError
 	} else if !cm.isClient && (channelID%2) == 0 {
 		// Server is trying to open odd numbered channels
-		return nil, errors.New("client may only open odd numbered channels")
+		return nil, utils.ClientAttemptedToOpenOddNumberedChannelError
 	}
 
 	_, exists := cm.channels[channelID]
 	if exists {
-		return nil, errors.New("channel id is already in use")
+		return nil, utils.ChannelIDIsAlreadyInUseError
 	}
 
 	// Some channels only allow us to open one of them per connection
 	if chandler.Singleton() && cm.Channel(chandler.Type(), channels.Inbound) != nil {
-		return nil, errors.New("Connection already has channel of type " + chandler.Type())
+		return nil, utils.AttemptToOpenMoreThanOneSingletonChannelError
 	}
 
 	channel := new(channels.Channel)
