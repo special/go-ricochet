@@ -17,6 +17,7 @@ type RicochetApplication struct {
 	privateKey            *rsa.PrivateKey
 	chatMessageHandler    func(*RicochetApplicationInstance, uint32, time.Time, string)
 	chatMessageAckHandler func(*RicochetApplicationInstance, uint32)
+	l       net.Listener
 }
 
 type RicochetApplicationInstance struct {
@@ -120,15 +121,25 @@ func (ra *RicochetApplication) handleConnection(conn net.Conn) {
 	rc.Process(rai)
 }
 
+func (ra *RicochetApplication) Shutdown () {
+        log.Printf("Closing")
+        ra.l.Close()
+        log.Printf("Closed")
+}
+
 func (ra *RicochetApplication) Run(l net.Listener) {
 	if ra.privateKey == nil || ra.contactManager == nil {
 		return
 	}
-
-	for {
-		conn, err := l.Accept()
+	ra.l = l
+        var err error
+	for err == nil {
+		conn, err := ra.l.Accept()
 		if err == nil {
 			go ra.handleConnection(conn)
+		} else {
+		        log.Printf("Closing")
+		        return
 		}
 	}
 }

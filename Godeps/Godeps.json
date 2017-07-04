@@ -2,10 +2,25 @@
 	"ImportPath": "github.com/s-rah/go-ricochet",
 	"GoVersion": "go1.7",
 	"GodepVersion": "v79",
+	"Packages": [
+		"./..."
+	],
 	"Deps": [
 		{
 			"ImportPath": "github.com/golang/protobuf/proto",
 			"Rev": "8ee79997227bf9b34611aee7946ae64735e6fd93"
+		},
+		{
+			"ImportPath": "github.com/yawning/bulb",
+			"Rev": "85d80d893c3d4a478b8c0abbc43f0ea13e1ce4f9"
+		},
+		{
+			"ImportPath": "github.com/yawning/bulb/utils",
+			"Rev": "85d80d893c3d4a478b8c0abbc43f0ea13e1ce4f9"
+		},
+		{
+			"ImportPath": "github.com/yawning/bulb/utils/pkcs1",
+			"Rev": "85d80d893c3d4a478b8c0abbc43f0ea13e1ce4f9"
 		},
 		{
 			"ImportPath": "golang.org/x/net/proxy",
