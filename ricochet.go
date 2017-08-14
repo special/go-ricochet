@@ -20,7 +20,7 @@ func Open(remoteHostname string) (*connection.Connection, error) {
 		return nil, err
 	}
 
-	rc, err := negotiateVersion(conn, remoteHostname)
+	rc, err := NegotiateVersionOutbound(conn, remoteHostname)
 	if err != nil {
 		conn.Close()
 		return nil, err
@@ -30,7 +30,7 @@ func Open(remoteHostname string) (*connection.Connection, error) {
 
 // negotiate version takes an open network connection and executes
 // the ricochet version negotiation procedure.
-func negotiateVersion(conn net.Conn, remoteHostname string) (*connection.Connection, error) {
+func NegotiateVersionOutbound(conn net.Conn, remoteHostname string) (*connection.Connection, error) {
 	versions := []byte{0x49, 0x4D, 0x01, 0x01}
 	if n, err := conn.Write(versions); err != nil || n < len(versions) {
 		return nil, utils.VersionNegotiationError
