@@ -6,8 +6,10 @@ import (
 	"net"
 )
 
-func SetupOnion(proxyServer string, authentication string, pk *rsa.PrivateKey, onionport uint16) (net.Listener, error) {
-	c, err := bulb.Dial("tcp4", proxyServer)
+// "127.0.0.1:9051" "tcp4"
+// "/var/run/tor/control" "unix"
+func SetupOnion(torControlAddress string, torControlSocketType string, authentication string, pk *rsa.PrivateKey, onionport uint16) (net.Listener, error) {
+	c, err := bulb.Dial(torControlSocketType, torControlAddress)
 	if err != nil {
 		return nil, err
 	}
