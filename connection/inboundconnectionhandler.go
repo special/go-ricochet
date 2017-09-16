@@ -39,15 +39,32 @@ func (ich *InboundConnectionHandler) ProcessAuthAsServer(privateKey *rsa.Private
 		return utils.PrivateKeyNotSetError
 	}
 
-	ach := new(AutoConnectionHandler)
-	ach.Init(privateKey, ich.connection.RemoteHostname)
-	ach.SetServerAuthHandler(sach)
+	var authAllowed, authKnown bool
+	var authHostname string
 
-	var authResult channels.AuthChannelResult
-	go func() {
-		authResult = ach.WaitForAuthenticationEvent()
+	onAuthValid := func(hostname string, publicKey rsa.PublicKey) (allowed, known bool) {
+		authAllowed, authKnown = sach(hostname, publicKey)
+		if authAllowed {
+			authHostname = hostname
+		}
 		ich.connection.Break()
-	}()
+		return authAllowed, authKnown
+	}
+	onAuthInvalid := func(err error) {
+		// err is ignored at the moment
+		ich.connection.Break()
+	}
+
+	ach := new(AutoConnectionHandler)
+	ach.Init()
+	ach.RegisterChannelHandler("im.ricochet.auth.hidden-service",
+		func() channels.Handler {
+			return &channels.HiddenServiceAuthChannel{
+				PrivateKey:        privateKey,
+				ServerAuthValid:   onAuthValid,
+				ServerAuthInvalid: onAuthInvalid,
+			}
+		})
 
 	policy := policies.UnknownPurposeTimeout
 	err := policy.ExecuteAction(func() error {
@@ -55,8 +72,8 @@ func (ich *InboundConnectionHandler) ProcessAuthAsServer(privateKey *rsa.Private
 	})
 
 	if err == nil {
-		if authResult.Accepted == true {
-			ich.connection.RemoteHostname = authResult.Hostname
+		if authAllowed == true {
+			ich.connection.RemoteHostname = authHostname
 			return nil
 		}
 		return utils.ClientFailedToAuthenticateError

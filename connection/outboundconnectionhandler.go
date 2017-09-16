@@ -38,26 +38,34 @@ func (och *OutboundConnectionHandler) ProcessAuthAsClient(privateKey *rsa.Privat
 	}
 
 	ach := new(AutoConnectionHandler)
-	ach.Init(privateKey, och.connection.RemoteHostname)
+	ach.Init()
 
-	var result channels.AuthChannelResult
-	go func() {
-		err := och.connection.RequestOpenChannel("im.ricochet.auth.hidden-service", ach)
-		if err != nil {
-			return
-		}
-		result = ach.WaitForAuthenticationEvent()
+	var accepted, isKnownContact bool
+	authCallback := func(accept, known bool) {
+		accepted = accept
+		isKnownContact = known
+		// Cause the Process() call below to return
 		och.connection.Break()
-	}()
+	}
+
+	err := och.connection.RequestOpenChannel("im.ricochet.auth.hidden-service",
+		&channels.HiddenServiceAuthChannel{
+			PrivateKey:       privateKey,
+			ServerHostname:   och.connection.RemoteHostname,
+			ClientAuthResult: authCallback,
+		})
+	if err != nil {
+		return false, err
+	}
 
 	policy := policies.UnknownPurposeTimeout
-	err := policy.ExecuteAction(func() error {
+	err = policy.ExecuteAction(func() error {
 		return och.connection.Process(ach)
 	})
 
 	if err == nil {
-		if result.Accepted == true {
-			return result.IsKnownContact, nil
+		if accepted == true {
+			return isKnownContact, nil
 		}
 	}
 	return false, utils.ServerRejectedClientConnectionError

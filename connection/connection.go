@@ -106,32 +106,25 @@ func (rc *Connection) Do(do func() error) error {
 }
 
 // RequestOpenChannel sends an OpenChannel message to the remote client.
-// and error is returned only if the requirements for opening this channel
-// are not met on the local side (a nill error return does not mean the
-// channel was opened successfully)
-func (rc *Connection) RequestOpenChannel(ctype string, handler Handler) error {
+// An error is returned only if the requirements for opening this channel
+// are not met on the local side (a nil error return does not mean the
+// channel was opened successfully, because channels open asynchronously).
+func (rc *Connection) RequestOpenChannel(ctype string, handler channels.Handler) error {
 	rc.traceLog(fmt.Sprintf("requesting open channel of type %s", ctype))
 	return rc.Do(func() error {
-		chandler, err := handler.OnOpenChannelRequest(ctype)
-
-		if err != nil {
-			rc.traceLog(fmt.Sprintf("failed to request open channel of type %v", err))
-			return err
-		}
-
 		// Check that we have the authentication already
-		if chandler.RequiresAuthentication() != "none" {
+		if handler.RequiresAuthentication() != "none" {
 			// Enforce Authentication Check.
-			_, authed := rc.Authentication[chandler.RequiresAuthentication()]
+			_, authed := rc.Authentication[handler.RequiresAuthentication()]
 			if !authed {
 				return utils.UnauthorizedActionError
 			}
 		}
 
-		channel, err := rc.channelManager.OpenChannelRequest(chandler)
+		channel, err := rc.channelManager.OpenChannelRequest(handler)
 
 		if err != nil {
-			rc.traceLog(fmt.Sprintf("failed to reqeust open channel of type %v", err))
+			rc.traceLog(fmt.Sprintf("failed to request open channel of type %v", err))
 			return err
 		}
 
@@ -139,18 +132,18 @@ func (rc *Connection) RequestOpenChannel(ctype string, handler Handler) error {
 			rc.SendRicochetPacket(rc.Conn, channel.ID, message)
 		}
 		channel.DelegateAuthorization = func() {
-			rc.Authentication[chandler.Type()] = true
+			rc.Authentication[handler.Type()] = true
 		}
 		channel.CloseChannel = func() {
 			rc.SendRicochetPacket(rc.Conn, channel.ID, []byte{})
 			rc.channelManager.RemoveChannel(channel.ID)
 		}
-		response, err := chandler.OpenOutbound(channel)
+		response, err := handler.OpenOutbound(channel)
 		if err == nil {
 			rc.traceLog(fmt.Sprintf("requested open channel of type %s", ctype))
 			rc.SendRicochetPacket(rc.Conn, 0, response)
 		} else {
-			rc.traceLog(fmt.Sprintf("failed to reqeust open channel of type %v", err))
+			rc.traceLog(fmt.Sprintf("failed to request open channel of type %v", err))
 			rc.channelManager.RemoveChannel(channel.ID)
 		}
 		return nil

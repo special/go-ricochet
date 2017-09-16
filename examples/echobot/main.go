@@ -45,7 +45,7 @@ func (echobot *RicochetEchoBot) Connect(privateKeyFile string, hostname string) 
 	privateKey, _ := utils.LoadPrivateKeyFromFile(privateKeyFile)
 	echobot.messages = make(chan string)
 
-	echobot.Init(privateKey, hostname)
+	echobot.Init()
 	echobot.RegisterChannelHandler("im.ricochet.contact.request", func() channels.Handler {
 		contact := new(channels.ContactRequestChannel)
 		contact.Handler = echobot
@@ -64,13 +64,13 @@ func (echobot *RicochetEchoBot) Connect(privateKeyFile string, hostname string) 
 		go rc.Process(echobot)
 
 		if !known {
-			err := rc.RequestOpenChannel("im.ricochet.contact.request", echobot)
+			err := rc.RequestOpenChannel("im.ricochet.contact.request", &channels.ContactRequestChannel{Handler: echobot})
 			if err != nil {
 				log.Printf("could not contact %s", err)
 			}
 		}
 
-		rc.RequestOpenChannel("im.ricochet.chat", echobot)
+		rc.RequestOpenChannel("im.ricochet.chat", &channels.ChatChannel{Handler: echobot})
 		for {
 			message := <-echobot.messages
 			log.Printf("Received Message: %s", message)

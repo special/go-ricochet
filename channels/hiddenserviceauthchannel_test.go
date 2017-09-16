@@ -110,34 +110,16 @@ func TestAuthenticationOpenOutbound(t *testing.T) {
 
 }
 
-type SimpleTestAuthHandler struct {
-}
-
-// Client
-func (stah *SimpleTestAuthHandler) ClientAuthResult(accepted bool, isKnownContact bool) {
-
-}
-
-// Server
-func (stah *SimpleTestAuthHandler) ServerAuthValid(hostname string, publicKey rsa.PublicKey) (allowed, known bool) {
-	return true, true
-}
-
-func (stah *SimpleTestAuthHandler) ServerAuthInvalid(err error) {
-
-}
-
 func TestAuthenticationOpenOutboundResult(t *testing.T) {
 
 	privateKey, _ := utils.LoadPrivateKeyFromFile("../testing/private_key")
 
 	authHandlerA := new(HiddenServiceAuthChannel)
 	authHandlerB := new(HiddenServiceAuthChannel)
-	simpleTestAuthHandler := new(SimpleTestAuthHandler)
 
 	authHandlerA.ServerHostname = "kwke2hntvyfqm7dr"
 	authHandlerA.PrivateKey = privateKey
-	authHandlerA.Handler = simpleTestAuthHandler
+	authHandlerA.ClientAuthResult = func(accepted, known bool) {}
 	channelA := Channel{ID: 1, Direction: Outbound}
 	channelA.SendMessage = func(message []byte) {
 		authHandlerB.Packet(message)
@@ -150,7 +132,8 @@ func TestAuthenticationOpenOutboundResult(t *testing.T) {
 
 	authHandlerB.ServerHostname = "kwke2hntvyfqm7dr"
 	authHandlerB.PrivateKey = privateKey
-	authHandlerB.Handler = simpleTestAuthHandler
+	authHandlerB.ServerAuthValid = func(hostname string, publicKey rsa.PublicKey) (allowed, known bool) { return true, true }
+	authHandlerB.ServerAuthInvalid = func(err error) { t.Error("server received invalid auth") }
 	channelB := Channel{ID: 1, Direction: Inbound}
 	channelB.SendMessage = func(message []byte) {
 		authHandlerA.Packet(message)

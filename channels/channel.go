@@ -10,13 +10,6 @@ const (
 	Outbound
 )
 
-// AuthChannelResult captures the result of an authentication flow
-type AuthChannelResult struct {
-	Hostname       string
-	Accepted       bool
-	IsKnownContact bool
-}
-
 // Channel holds the state of a channel on an open connection
 type Channel struct {
 	ID int32

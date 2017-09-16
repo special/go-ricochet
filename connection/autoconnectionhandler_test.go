@@ -2,6 +2,7 @@ package connection
 
 import (
 	"github.com/golang/protobuf/proto"
+	"github.com/s-rah/go-ricochet/channels"
 	"github.com/s-rah/go-ricochet/utils"
 	"github.com/s-rah/go-ricochet/wire/control"
 	"testing"
@@ -10,9 +11,10 @@ import (
 // Test sending valid packets
 func TestInit(t *testing.T) {
 	ach := new(AutoConnectionHandler)
-	privateKey, err := utils.LoadPrivateKeyFromFile("../testing/private_key")
-
-	ach.Init(privateKey, "")
+	ach.Init()
+	ach.RegisterChannelHandler("im.ricochet.auth.hidden-service", func() channels.Handler {
+		return &channels.HiddenServiceAuthChannel{}
+	})
 
 	// Construct the Open Authentication Channel Message
 	messageBuilder := new(utils.MessageBuilder)

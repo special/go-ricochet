@@ -20,26 +20,19 @@ const (
 
 // HiddenServiceAuthChannel wraps implementation of im.ricochet.auth.hidden-service"
 type HiddenServiceAuthChannel struct {
-	// Methods of Handler are called for events on this channel
-	Handler AuthChannelHandler
 	// PrivateKey must be set for client-side authentication channels
 	PrivateKey *rsa.PrivateKey
 	// Server Hostname must be set for client-side authentication channels
 	ServerHostname string
 
+	// Callbacks
+	ClientAuthResult  func(accepted, isKnownContact bool)
+	ServerAuthValid   func(hostname string, publicKey rsa.PublicKey) (allowed, known bool)
+	ServerAuthInvalid func(err error)
+
 	// Internal state
 	clientCookie, serverCookie [16]byte
 	channel                    *Channel
-}
-
-// AuthChannelHandler ...
-type AuthChannelHandler interface {
-	// Client
-	ClientAuthResult(accepted bool, isKnownContact bool)
-
-	// Server
-	ServerAuthValid(hostname string, publicKey rsa.PublicKey) (allowed, known bool)
-	ServerAuthInvalid(err error)
 }
 
 // Type returns the type string for this channel, e.g. "im.ricochet.chat".
@@ -173,7 +166,7 @@ func (ah *HiddenServiceAuthChannel) Packet(data []byte) {
 		})
 
 		if err != nil {
-			ah.Handler.ServerAuthInvalid(err)
+			ah.ServerAuthInvalid(err)
 			ah.channel.SendMessage([]byte{})
 			return
 		}
@@ -183,7 +176,7 @@ func (ah *HiddenServiceAuthChannel) Packet(data []byte) {
 		publicKey := rsa.PublicKey{}
 		_, err = asn1.Unmarshal(res.GetProof().GetPublicKey(), &publicKey)
 		if err != nil {
-			ah.Handler.ServerAuthInvalid(err)
+			ah.ServerAuthInvalid(err)
 			ah.channel.SendMessage([]byte{})
 			return
 		}
@@ -194,7 +187,7 @@ func (ah *HiddenServiceAuthChannel) Packet(data []byte) {
 
 		if err == nil {
 			// Signature is Good
-			accepted, isKnownContact := ah.Handler.ServerAuthValid(provisionalClientHostname, publicKey)
+			accepted, isKnownContact := ah.ServerAuthValid(provisionalClientHostname, publicKey)
 
 			// Send Result
 			messageBuilder := new(utils.MessageBuilder)
@@ -206,11 +199,13 @@ func (ah *HiddenServiceAuthChannel) Packet(data []byte) {
 			messageBuilder := new(utils.MessageBuilder)
 			result := messageBuilder.AuthResult(false, false)
 			ah.channel.SendMessage(result)
-			ah.Handler.ServerAuthInvalid(err)
+			ah.ServerAuthInvalid(err)
 		}
 
 	} else if res.GetResult() != nil && ah.channel.Direction == Outbound {
-		ah.Handler.ClientAuthResult(res.GetResult().GetAccepted(), res.GetResult().GetIsKnownContact())
+		if ah.ClientAuthResult != nil {
+			ah.ClientAuthResult(res.GetResult().GetAccepted(), res.GetResult().GetIsKnownContact())
+		}
 		if res.GetResult().GetAccepted() {
 			ah.channel.DelegateAuthorization()
 		}
