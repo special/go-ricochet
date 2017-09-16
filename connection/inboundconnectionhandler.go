@@ -5,6 +5,7 @@ import (
 	"github.com/s-rah/go-ricochet/channels"
 	"github.com/s-rah/go-ricochet/policies"
 	"github.com/s-rah/go-ricochet/utils"
+	"sync"
 )
 
 // InboundConnectionHandler is a convieniance wrapper for handling inbound
@@ -39,6 +40,8 @@ func (ich *InboundConnectionHandler) ProcessAuthAsServer(privateKey *rsa.Private
 		return utils.PrivateKeyNotSetError
 	}
 
+	var breakOnce sync.Once
+
 	var authAllowed, authKnown bool
 	var authHostname string
 
@@ -47,12 +50,12 @@ func (ich *InboundConnectionHandler) ProcessAuthAsServer(privateKey *rsa.Private
 		if authAllowed {
 			authHostname = hostname
 		}
-		ich.connection.Break()
+		breakOnce.Do(func() { go ich.connection.Break() })
 		return authAllowed, authKnown
 	}
 	onAuthInvalid := func(err error) {
 		// err is ignored at the moment
-		ich.connection.Break()
+		breakOnce.Do(func() { go ich.connection.Break() })
 	}
 
 	ach := new(AutoConnectionHandler)
@@ -66,6 +69,9 @@ func (ich *InboundConnectionHandler) ProcessAuthAsServer(privateKey *rsa.Private
 			}
 		})
 
+	// Ensure that the call to Process() cannot outlive this function,
+	// particularly for the case where the policy timeout expires
+	defer breakOnce.Do(func() { ich.connection.Break() })
 	policy := policies.UnknownPurposeTimeout
 	err := policy.ExecuteAction(func() error {
 		return ich.connection.Process(ach)
