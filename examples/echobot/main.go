@@ -64,13 +64,19 @@ func (echobot *RicochetEchoBot) Connect(privateKeyFile string, hostname string) 
 		go rc.Process(echobot)
 
 		if !known {
-			_, err := rc.RequestOpenChannel("im.ricochet.contact.request", &channels.ContactRequestChannel{Handler: echobot})
+			err := rc.Do(func() error {
+				_, err := rc.RequestOpenChannel("im.ricochet.contact.request", &channels.ContactRequestChannel{Handler: echobot})
+				return err
+			})
 			if err != nil {
 				log.Printf("could not contact %s", err)
 			}
 		}
 
-		rc.RequestOpenChannel("im.ricochet.chat", &channels.ChatChannel{Handler: echobot})
+		rc.Do(func() error {
+			_, err := rc.RequestOpenChannel("im.ricochet.chat", &channels.ChatChannel{Handler: echobot})
+			return err
+		})
 		for {
 			message := <-echobot.messages
 			log.Printf("Received Message: %s", message)
