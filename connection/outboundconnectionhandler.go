@@ -48,7 +48,7 @@ func (och *OutboundConnectionHandler) ProcessAuthAsClient(privateKey *rsa.Privat
 		och.connection.Break()
 	}
 
-	err := och.connection.RequestOpenChannel("im.ricochet.auth.hidden-service",
+	_, err := och.connection.RequestOpenChannel("im.ricochet.auth.hidden-service",
 		&channels.HiddenServiceAuthChannel{
 			PrivateKey:       privateKey,
 			ServerHostname:   och.connection.RemoteHostname,

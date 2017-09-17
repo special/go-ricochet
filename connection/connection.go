@@ -109,9 +109,10 @@ func (rc *Connection) Do(do func() error) error {
 // An error is returned only if the requirements for opening this channel
 // are not met on the local side (a nil error return does not mean the
 // channel was opened successfully, because channels open asynchronously).
-func (rc *Connection) RequestOpenChannel(ctype string, handler channels.Handler) error {
+func (rc *Connection) RequestOpenChannel(ctype string, handler channels.Handler) (*channels.Channel, error) {
 	rc.traceLog(fmt.Sprintf("requesting open channel of type %s", ctype))
-	return rc.Do(func() error {
+	var channel *channels.Channel
+	err := rc.Do(func() error {
 		// Check that we have the authentication already
 		if handler.RequiresAuthentication() != "none" {
 			// Enforce Authentication Check.
@@ -121,7 +122,8 @@ func (rc *Connection) RequestOpenChannel(ctype string, handler channels.Handler)
 			}
 		}
 
-		channel, err := rc.channelManager.OpenChannelRequest(handler)
+		var err error
+		channel, err = rc.channelManager.OpenChannelRequest(handler)
 
 		if err != nil {
 			rc.traceLog(fmt.Sprintf("failed to request open channel of type %v", err))
@@ -148,6 +150,7 @@ func (rc *Connection) RequestOpenChannel(ctype string, handler channels.Handler)
 		}
 		return nil
 	})
+	return channel, err
 }
 
 // Process receives socket and protocol events for the connection. Methods

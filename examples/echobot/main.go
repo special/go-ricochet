@@ -64,7 +64,7 @@ func (echobot *RicochetEchoBot) Connect(privateKeyFile string, hostname string) 
 		go rc.Process(echobot)
 
 		if !known {
-			err := rc.RequestOpenChannel("im.ricochet.contact.request", &channels.ContactRequestChannel{Handler: echobot})
+			_, err := rc.RequestOpenChannel("im.ricochet.contact.request", &channels.ContactRequestChannel{Handler: echobot})
 			if err != nil {
 				log.Printf("could not contact %s", err)
 			}
