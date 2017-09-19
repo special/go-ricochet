@@ -39,6 +39,9 @@ const (
 
 	// Library Use Errors
 	PrivateKeyNotSetError = Error("ClientFailedToAuthenticateError")
+
+	// Connection Errors
+	ConnectionClosedError = Error("ConnectionClosedError")
 )
 
 // CheckError is a helper function for panicing on errors which we need to handle

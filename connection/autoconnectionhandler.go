@@ -1,7 +1,6 @@
 package connection
 
 import (
-	"crypto/rsa"
 	"github.com/s-rah/go-ricochet/channels"
 	"github.com/s-rah/go-ricochet/utils"
 )
@@ -16,30 +15,14 @@ import (
 // AutoConnectionHandler's behavior (such as adding new channel types, or reacting
 // to connection close events), this type can be embedded in the type that it serves.
 type AutoConnectionHandler struct {
-	handlerMap        map[string]func() channels.Handler
-	connection        *Connection
-	authResultChannel chan channels.AuthChannelResult
-	sach              func(hostname string, publicKey rsa.PublicKey) (allowed, known bool)
+	handlerMap map[string]func() channels.Handler
+	connection *Connection
 }
 
 // Init ...
 // TODO: Split this into client and server init
-func (ach *AutoConnectionHandler) Init(privateKey *rsa.PrivateKey, serverHostname string) {
-
+func (ach *AutoConnectionHandler) Init() {
 	ach.handlerMap = make(map[string]func() channels.Handler)
-	ach.RegisterChannelHandler("im.ricochet.auth.hidden-service", func() channels.Handler {
-		hsau := new(channels.HiddenServiceAuthChannel)
-		hsau.PrivateKey = privateKey
-		hsau.Handler = ach
-		hsau.ServerHostname = serverHostname
-		return hsau
-	})
-	ach.authResultChannel = make(chan channels.AuthChannelResult)
-}
-
-// SetServerAuthHandler ...
-func (ach *AutoConnectionHandler) SetServerAuthHandler(sach func(hostname string, publicKey rsa.PublicKey) (allowed, known bool)) {
-	ach.sach = sach
 }
 
 // OnReady ...
@@ -49,29 +32,6 @@ func (ach *AutoConnectionHandler) OnReady(oc *Connection) {
 
 // OnClosed is called when the OpenConnection has closed for any reason.
 func (ach *AutoConnectionHandler) OnClosed(err error) {
-}
-
-// WaitForAuthenticationEvent ...
-func (ach *AutoConnectionHandler) WaitForAuthenticationEvent() channels.AuthChannelResult {
-	return <-ach.authResultChannel
-}
-
-// ClientAuthResult ...
-func (ach *AutoConnectionHandler) ClientAuthResult(accepted bool, isKnownContact bool) {
-	ach.authResultChannel <- channels.AuthChannelResult{Accepted: accepted, IsKnownContact: isKnownContact}
-}
-
-// ServerAuthValid ...
-func (ach *AutoConnectionHandler) ServerAuthValid(hostname string, publicKey rsa.PublicKey) (allowed, known bool) {
-	// Do something
-	accepted, isKnownContact := ach.sach(hostname, publicKey)
-	ach.authResultChannel <- channels.AuthChannelResult{Hostname: hostname, Accepted: accepted, IsKnownContact: isKnownContact}
-	return accepted, isKnownContact
-}
-
-// ServerAuthInvalid ...
-func (ach *AutoConnectionHandler) ServerAuthInvalid(err error) {
-	ach.authResultChannel <- channels.AuthChannelResult{Accepted: false, IsKnownContact: false}
 }
 
 // RegisterChannelHandler ...

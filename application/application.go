@@ -44,11 +44,10 @@ func (rai *RicochetApplicationInstance) ContactRequestError() {
 }
 
 func (rai *RicochetApplicationInstance) SendChatMessage(message string) {
-
-	// Technically this errors afte the second time but we can ignore it.
-	rai.connection.RequestOpenChannel("im.ricochet.chat", rai)
-
 	rai.connection.Do(func() error {
+		// Technically this errors afte the second time but we can ignore it.
+		rai.connection.RequestOpenChannel("im.ricochet.chat", rai)
+
 		channel := rai.connection.Channel("im.ricochet.chat", channels.Outbound)
 		if channel != nil {
 			chatchannel, ok := (*channel.Handler).(*channels.ChatChannel)

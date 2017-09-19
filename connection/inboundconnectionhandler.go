@@ -5,6 +5,7 @@ import (
 	"github.com/s-rah/go-ricochet/channels"
 	"github.com/s-rah/go-ricochet/policies"
 	"github.com/s-rah/go-ricochet/utils"
+	"sync"
 )
 
 // InboundConnectionHandler is a convieniance wrapper for handling inbound
@@ -39,24 +40,46 @@ func (ich *InboundConnectionHandler) ProcessAuthAsServer(privateKey *rsa.Private
 		return utils.PrivateKeyNotSetError
 	}
 
+	var breakOnce sync.Once
+
+	var authAllowed, authKnown bool
+	var authHostname string
+
+	onAuthValid := func(hostname string, publicKey rsa.PublicKey) (allowed, known bool) {
+		authAllowed, authKnown = sach(hostname, publicKey)
+		if authAllowed {
+			authHostname = hostname
+		}
+		breakOnce.Do(func() { go ich.connection.Break() })
+		return authAllowed, authKnown
+	}
+	onAuthInvalid := func(err error) {
+		// err is ignored at the moment
+		breakOnce.Do(func() { go ich.connection.Break() })
+	}
+
 	ach := new(AutoConnectionHandler)
-	ach.Init(privateKey, ich.connection.RemoteHostname)
-	ach.SetServerAuthHandler(sach)
+	ach.Init()
+	ach.RegisterChannelHandler("im.ricochet.auth.hidden-service",
+		func() channels.Handler {
+			return &channels.HiddenServiceAuthChannel{
+				PrivateKey:        privateKey,
+				ServerAuthValid:   onAuthValid,
+				ServerAuthInvalid: onAuthInvalid,
+			}
+		})
 
-	var authResult channels.AuthChannelResult
-	go func() {
-		authResult = ach.WaitForAuthenticationEvent()
-		ich.connection.Break()
-	}()
-
+	// Ensure that the call to Process() cannot outlive this function,
+	// particularly for the case where the policy timeout expires
+	defer breakOnce.Do(func() { ich.connection.Break() })
 	policy := policies.UnknownPurposeTimeout
 	err := policy.ExecuteAction(func() error {
 		return ich.connection.Process(ach)
 	})
 
 	if err == nil {
-		if authResult.Accepted == true {
-			ich.connection.RemoteHostname = authResult.Hostname
+		if authAllowed == true {
+			ich.connection.RemoteHostname = authHostname
 			return nil
 		}
 		return utils.ClientFailedToAuthenticateError

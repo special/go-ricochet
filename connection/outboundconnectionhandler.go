@@ -5,6 +5,7 @@ import (
 	"github.com/s-rah/go-ricochet/channels"
 	"github.com/s-rah/go-ricochet/policies"
 	"github.com/s-rah/go-ricochet/utils"
+	"sync"
 )
 
 // OutboundConnectionHandler is a convieniance wrapper for handling outbound
@@ -38,27 +39,52 @@ func (och *OutboundConnectionHandler) ProcessAuthAsClient(privateKey *rsa.Privat
 	}
 
 	ach := new(AutoConnectionHandler)
-	ach.Init(privateKey, och.connection.RemoteHostname)
+	ach.Init()
 
-	var result channels.AuthChannelResult
+	// Make sure that calls to Break in this function cannot race
+	var breakOnce sync.Once
+
+	var accepted, isKnownContact bool
+	authCallback := func(accept, known bool) {
+		accepted = accept
+		isKnownContact = known
+		// Cause the Process() call below to return.
+		// If Break() is called from here, it _must_ use go, because this will
+		// execute in the Process goroutine, and Break() will deadlock.
+		breakOnce.Do(func() { go och.connection.Break() })
+	}
+
+	processResult := make(chan error, 1)
 	go func() {
-		err := och.connection.RequestOpenChannel("im.ricochet.auth.hidden-service", ach)
-		if err != nil {
-			return
-		}
-		result = ach.WaitForAuthenticationEvent()
-		och.connection.Break()
+		// Break Process() if timed out; no-op if Process returned a conn error
+		defer func() { breakOnce.Do(func() { och.connection.Break() }) }()
+		policy := policies.UnknownPurposeTimeout
+		err := policy.ExecuteAction(func() error {
+			return och.connection.Process(ach)
+		})
+		processResult <- err
 	}()
 
-	policy := policies.UnknownPurposeTimeout
-	err := policy.ExecuteAction(func() error {
-		return och.connection.Process(ach)
+	err := och.connection.Do(func() error {
+		_, err := och.connection.RequestOpenChannel("im.ricochet.auth.hidden-service",
+			&channels.HiddenServiceAuthChannel{
+				PrivateKey:       privateKey,
+				ServerHostname:   och.connection.RemoteHostname,
+				ClientAuthResult: authCallback,
+			})
+		return err
 	})
+	if err != nil {
+		breakOnce.Do(func() { och.connection.Break() })
+		return false, err
+	}
 
-	if err == nil {
-		if result.Accepted == true {
-			return result.IsKnownContact, nil
-		}
+	if err = <-processResult; err != nil {
+		return false, err
+	}
+
+	if accepted == true {
+		return isKnownContact, nil
 	}
 	return false, utils.ServerRejectedClientConnectionError
 }
