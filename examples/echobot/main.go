@@ -16,10 +16,6 @@ type RicochetEchoBot struct {
 	messages chan string
 }
 
-func (echobot *RicochetEchoBot) GetContactDetails() (string, string) {
-	return "EchoBot", "I LIVE 😈😈!!!!"
-}
-
 func (echobot *RicochetEchoBot) ContactRequest(name string, message string) string {
 	return "Pending"
 }
@@ -64,7 +60,12 @@ func (echobot *RicochetEchoBot) Connect(privateKeyFile string, hostname string) 
 		go rc.Process(echobot)
 
 		if !known {
-			_, err := rc.RequestOpenChannel("im.ricochet.contact.request", &channels.ContactRequestChannel{Handler: echobot})
+			_, err := rc.RequestOpenChannel("im.ricochet.contact.request",
+				&channels.ContactRequestChannel{
+					Handler: echobot,
+					Name:    "EchoBot",
+					Message: "I LIVE 😈😈!!!!",
+				})
 			if err != nil {
 				log.Printf("could not contact %s", err)
 			}

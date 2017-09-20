@@ -14,10 +14,6 @@ func (aacm *AcceptAllContactManager) LookupContact(hostname string, publicKey rs
 	return true, true
 }
 
-func (aacm *AcceptAllContactManager) GetContactDetails() (string, string) {
-	return "", ""
-}
-
 func (aacm *AcceptAllContactManager) ContactRequest(name string, message string) string {
 	return "Accepted"
 }

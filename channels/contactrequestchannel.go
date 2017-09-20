@@ -16,11 +16,14 @@ const (
 
 // ContactRequestChannel implements the ChannelHandler interface for a channel of
 // type "im.ricochet.contact.request". The channel may be inbound or outbound.
-// a ContactRequestChannelHandler implementation to handle chat events.
 type ContactRequestChannel struct {
 	// Methods of Handler are called for chat events on this channel
 	Handler ContactRequestChannelHandler
 	channel *Channel
+
+	// Properties of the request
+	Name    string
+	Message string
 }
 
 // ContactRequestChannelHandler is implemented by an application type to receive
@@ -30,7 +33,6 @@ type ContactRequestChannel struct {
 // ConnectionHandler; there is no need to use a distinct type as a
 // ContactRequestChannelHandler.
 type ContactRequestChannelHandler interface {
-	GetContactDetails() (string, string)
 	ContactRequest(name string, message string) string
 	ContactRequestRejected()
 	ContactRequestAccepted()
@@ -87,6 +89,8 @@ func (crc *ContactRequestChannel) OpenInbound(channel *Channel, oc *Protocol_Dat
 				return nil, InvalidContactMessageError
 			}
 
+			crc.Name = contactRequest.GetNickname()
+			crc.Message = contactRequest.GetMessageText()
 			result := crc.Handler.ContactRequest(contactRequest.GetNickname(), contactRequest.GetMessageText())
 			messageBuilder := new(utils.MessageBuilder)
 			return messageBuilder.ReplyToContactRequestOnResponse(channel.ID, result), nil
@@ -100,9 +104,8 @@ func (crc *ContactRequestChannel) OpenInbound(channel *Channel, oc *Protocol_Dat
 // returned, it will be sent as the OpenChannel message.
 func (crc *ContactRequestChannel) OpenOutbound(channel *Channel) ([]byte, error) {
 	crc.channel = channel
-	name, message := crc.Handler.GetContactDetails()
 	messageBuilder := new(utils.MessageBuilder)
-	return messageBuilder.OpenContactRequestChannel(channel.ID, name, message), nil
+	return messageBuilder.OpenContactRequestChannel(channel.ID, crc.Name, crc.Message), nil
 }
 
 // OpenOutboundResult is called when a response is received for an
@@ -123,6 +126,11 @@ func (crc *ContactRequestChannel) OpenOutboundResult(err error, crm *Protocol_Da
 		}
 	}
 	crc.channel.SendMessage([]byte{})
+}
+
+func (crc *ContactRequestChannel) SendResponse(status string) {
+	messageBuilder := new(utils.MessageBuilder)
+	crc.channel.SendMessage(messageBuilder.ReplyToContactRequest(crc.channel.ID, status))
 }
 
 func (crc *ContactRequestChannel) handleStatus(status string) {
