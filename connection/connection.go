@@ -347,11 +347,11 @@ func (rc *Connection) Process(handler Handler) error {
 				if len(packet.Data) == 0 {
 					rc.traceLog(fmt.Sprintf("removing channel %d", packet.Channel))
 					rc.channelManager.RemoveChannel(packet.Channel)
-					rc.processUserCallback(func() { (*channel.Handler).Closed(utils.ChannelClosedByPeerError) })
+					rc.processUserCallback(func() { channel.Handler.Closed(utils.ChannelClosedByPeerError) })
 				} else {
-					rc.traceLog(fmt.Sprintf("received packet on %v channel %d", (*channel.Handler).Type(), packet.Channel))
+					rc.traceLog(fmt.Sprintf("received packet on %v channel %d", channel.Handler.Type(), packet.Channel))
 					// Send The Ricochet Packet to the Handler
-					rc.processUserCallback(func() { (*channel.Handler).Packet(packet.Data[:]) })
+					rc.processUserCallback(func() { channel.Handler.Packet(packet.Data[:]) })
 				}
 			} else {
 				// When a non-zero packet is received for an unknown
@@ -437,10 +437,10 @@ func (rc *Connection) controlPacket(handler Handler, res *Protocol_Data_Control.
 
 		if cr.GetOpened() {
 			rc.traceLog(fmt.Sprintf("channel of type %v opened on %v", channel.Type, id))
-			(*channel.Handler).OpenOutboundResult(nil, cr)
+			channel.Handler.OpenOutboundResult(nil, cr)
 		} else {
 			rc.traceLog(fmt.Sprintf("channel of type %v rejected on %v", channel.Type, id))
-			(*channel.Handler).OpenOutboundResult(errors.New(""), cr)
+			channel.Handler.OpenOutboundResult(errors.New(""), cr)
 		}
 
 	} else if res.GetKeepAlive() != nil {
