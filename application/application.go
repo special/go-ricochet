@@ -51,7 +51,7 @@ func (rai *RicochetApplicationInstance) SendChatMessage(message string) {
 	rai.connection.Do(func() error {
 		channel := rai.connection.Channel("im.ricochet.chat", channels.Outbound)
 		if channel != nil {
-			chatchannel, ok := (*channel.Handler).(*channels.ChatChannel)
+			chatchannel, ok := channel.Handler.(*channels.ChatChannel)
 			if ok {
 				chatchannel.SendMessage(message)
 			}

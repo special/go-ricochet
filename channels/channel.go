@@ -23,7 +23,7 @@ type Channel struct {
 
 	Type           string
 	Direction      Direction
-	Handler        *Handler
+	Handler        Handler
 	Pending        bool
 	ServerHostname string
 	ClientHostname string

@@ -45,7 +45,7 @@ func (cm *ChannelManager) OpenChannelRequest(chandler channels.Handler) (*channe
 	channel.ID = cm.nextFreeChannel
 	cm.nextFreeChannel += 2
 	channel.Type = chandler.Type()
-	channel.Handler = &chandler
+	channel.Handler = chandler
 	channel.Pending = true
 	channel.Direction = channels.Outbound
 	cm.channels[channel.ID] = channel
@@ -76,7 +76,7 @@ func (cm *ChannelManager) OpenChannelRequestFromPeer(channelID int32, chandler c
 	channel := new(channels.Channel)
 	channel.ID = channelID
 	channel.Type = chandler.Type()
-	channel.Handler = &chandler
+	channel.Handler = chandler
 
 	channel.Pending = true
 	channel.Direction = channels.Inbound
@@ -90,7 +90,7 @@ func (cm *ChannelManager) OpenChannelRequestFromPeer(channelID int32, chandler c
 func (cm *ChannelManager) Channel(ctype string, way channels.Direction) *channels.Channel {
 	var foundChannel *channels.Channel
 	for _, channel := range cm.channels {
-		if (*channel.Handler).Type() == ctype && channel.Direction == way {
+		if channel.Handler.Type() == ctype && channel.Direction == way {
 			if foundChannel == nil {
 				foundChannel = channel
 			} else {

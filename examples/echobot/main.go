@@ -79,7 +79,7 @@ func (echobot *RicochetEchoBot) Connect(privateKeyFile string, hostname string) 
 				channel := rc.Channel("im.ricochet.chat", channels.Outbound)
 				if channel != nil {
 					log.Printf("Found Chat Channel")
-					chatchannel, ok := (*channel.Handler).(*channels.ChatChannel)
+					chatchannel, ok := channel.Handler.(*channels.ChatChannel)
 					if ok {
 						chatchannel.SendMessage(message)
 					}
