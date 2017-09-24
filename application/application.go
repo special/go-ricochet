@@ -28,10 +28,6 @@ type RicochetApplicationInstance struct {
 	ChatMessageAckHandler func(*RicochetApplicationInstance, uint32)
 }
 
-func (rai *RicochetApplicationInstance) GetContactDetails() (string, string) {
-	return "EchoBot", "I LIVE 😈😈!!!!"
-}
-
 func (rai *RicochetApplicationInstance) ContactRequest(name string, message string) string {
 	return "Accepted"
 }

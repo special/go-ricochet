@@ -12,10 +12,6 @@ type TestContactRequestHandler struct {
 	Received bool
 }
 
-func (tcrh *TestContactRequestHandler) GetContactDetails() (string, string) {
-	return "", ""
-}
-
 func (tcrh *TestContactRequestHandler) ContactRequest(name string, message string) string {
 	if name == "test_nickname" && message == "test_message" {
 		tcrh.Received = true
@@ -71,9 +67,11 @@ func TestContactRequestOpenOutbound(t *testing.T) {
 }
 
 func TestContactRequestOpenOutboundResult(t *testing.T) {
-	contactRequestChannel := new(ContactRequestChannel)
-	handler := new(TestContactRequestHandler)
-	contactRequestChannel.Handler = handler
+	contactRequestChannel := &ContactRequestChannel{
+		Name:    "test_nickname",
+		Message: "test_message",
+		Handler: &TestContactRequestHandler{},
+	}
 	channel := Channel{ID: 1}
 	contactRequestChannel.OpenOutbound(&channel)
 
