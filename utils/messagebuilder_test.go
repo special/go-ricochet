@@ -26,7 +26,7 @@ func TestOpenAuthenticationChannel(t *testing.T) {
 
 func TestChatMessage(t *testing.T) {
 	messageBuilder := new(MessageBuilder)
-	messageBuilder.ChatMessage("Hello World", 0)
+	messageBuilder.ChatMessage("Hello World", 0, 0)
 	// TODO: More Indepth Test Of Output
 }
 

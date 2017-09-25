@@ -76,7 +76,7 @@ func (tcch *TestChatChannelHandler) ChatMessage(messageID uint32, when time.Time
 	return true
 }
 
-func (tcch *TestChatChannelHandler) ChatMessageAck(messageID uint32) {
+func (tcch *TestChatChannelHandler) ChatMessageAck(messageID uint32, accepted bool) {
 
 }
 
@@ -116,7 +116,7 @@ func TestChatChannelOperations(t *testing.T) {
 		t.Errorf("After Successful Result ChatChannel Is Still Pending")
 	}
 
-	chat := messageBuilder.ChatMessage("message text", 0)
+	chat := messageBuilder.ChatMessage("message text", 0, 0)
 	chatChannel.Packet(chat)
 
 	chatChannel.SendMessage("hello")
